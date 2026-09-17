@@ -98,6 +98,13 @@ mcp_server/                MCP 서버
 │   └── downtime.py           조건별 정지 기록 조회
 └── README.md                 진행상황
 
+frontend/                  챗봇형 UI (Next.js, F-07) — 뼈대만 있고 구현은 비어 있음
+├── app/                     페이지 (layout.tsx, page.tsx)
+├── components/              ChatWindow / ChatInput / ReportCard / CauseList
+├── lib/api.ts               backend 호출 단일 창구
+├── types/report.ts          backend 출력 계약과 1:1 매칭되는 타입
+└── README.md                진행상황
+
 skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석)
 evals/                      평가셋 (dataset.jsonl, 최소 30건)
 EVAL_REPORT.md              개선 전후 지표
