@@ -12,7 +12,7 @@
   - [x] `load_mcp_tools`로 `mcp_server`에 붙어 도구를 동적으로 불러옴 (도구 이름 하드코딩 없음)
   - [x] 출력 계약 검증 (Pydantic) — 에이전트 응답을 JSON으로 파싱 후 스키마 검증
   - [x] 3단계 재시도/폴백 (① 프롬프트 재시도 → ② 축소 스키마 재시도 → ③ 고정 안전 응답), Docker로 폴백 동작 + **실제 API 키로 end-to-end 성공까지 확인함 (아래 5번 참고)**
-  - [x] Langfuse 트레이스 연동 (`langfuse.callback.CallbackHandler`, 키 없으면 자동으로 콜백 생략)
+  - [x] Langfuse 트레이스 연동 (`langfuse.langchain.CallbackHandler`, 키 없으면 자동으로 콜백 생략) — **실제 트레이스 도착까지 확인함 (아래 6번 참고)**
   - [x] `skills/SKILL.md` 전체를 시스템 프롬프트에 그대로 주입 (RAG 아님)
   - [x] 세션별 대화 기록 — 프로토타입 dict (F-07 설계와 동일한 원리, `session_id` 줄 때만 사용)
 - [x] 구조화 로그 — request_id, 사용 모델, elapsed_ms, unclassified_count (토큰 사용량은 중복 기록 안 하고 Langfuse 대시보드에서 확인)
@@ -67,7 +67,21 @@ curl -X POST http://localhost:8000/report \
 
 이 회귀 이후로 `/report`가 실제로 동작하는 걸 코드가 아니라 실행 결과로 확인한 건 이번이 처음입니다 — Pydantic 모델만 있고 "LLM 호출이 안 보인다"던 리뷰 지적이 정확했던 셈입니다.
 
-### 6. 팀 논의가 필요한 부분 (경계 케이스 판단)
+### 6. (9/17) Langfuse 키 연동 — 또 하나의 버전 드리프트 버그 발견·수정
+
+Langfuse 키(`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`, Langfuse Cloud)를 처음 채우고 위와 같은 방식으로 재테스트했는데, 리포트는 정상 생성됐지만 **Langfuse API(`/api/public/traces`)로 직접 조회해보니 트레이스가 0건**이었습니다.
+
+**버그**: `requirements.txt`에 `langfuse>=2.50`으로 느슨하게 버전을 열어뒀는데, 실제로 깔린 건 **langfuse 4.15.4**였습니다. v2 시절 코드(`from langfuse.callback import CallbackHandler`)를 그대로 썼는데, v3부터 **`langfuse.callback` 모듈 자체가 없어졌어요.** `try/except ImportError`로 감싸놨던 게 오히려 문제를 숨겼습니다 — import가 조용히 실패하고 `LangfuseCallbackHandler = None`이 되면서, 키가 없을 때와 똑같이 "조용히 트레이싱 생략" 경로를 타서 에러 한 줄 없이 계속 통과했습니다.
+
+**수정**:
+- import 경로를 `from langfuse.langchain import CallbackHandler`로 변경 (v3+ 새 위치)
+- 생성자 시그니처도 바뀌어서(`session_id`/`trace_name`/`metadata`를 더 이상 안 받음), `LangfuseCallbackHandler()`는 인자 없이 만들고, 대신 `AgentExecutor.ainvoke(config=...)`의 `metadata` 딕셔너리에 `langfuse_session_id`/`langfuse_trace_name` 같은 특수 키로 넘기는 방식으로 바뀜 — `_build_callbacks()`를 `_build_run_config()`로 이름까지 바꿔서 재작성함
+
+**수정 후 Langfuse API로 직접 검증**: `GET /api/public/traces` 응답에 트레이스 1건 확인 — `name: "downtime_report"`, `metadata: {line_id, equipment_id}` 정상 반영, **관측(observation) 25개**, **비용 $0.00145**, **지연 11.97초**까지 전부 자동 집계됨. EVAL_REPORT.md 1장(관측) 요구사항(입출력·모델·토큰·지연·비용)을 실제로 충족하는 것까지 확인.
+
+**패턴 반복 주의**: 이걸로 이번 프로젝트에서 "requirements.txt 버전을 느슨하게 열어뒀다가, 메이저 버전이 올라가면서 API가 바뀌어 조용히 죽는" 버그를 네 번째(`mcp`, `langchain`, `langchain-mcp-adapters` 다음, 이제 `langfuse`까지) 잡았습니다. `requirements.txt`에 `langfuse>=4.0`으로 하한을 고정해서, 앞으로 v2 시절 API로 되돌아갈 일은 없게 해뒀습니다.
+
+### 7. 팀 논의가 필요한 부분 (경계 케이스 판단)
 
 - **JSON 파싱 방식**: 에이전트 최종 출력 텍스트에서 `{...}` 구간만 뽑아 JSON으로 파싱하는 단순한 방식(`_extract_json`)을 썼습니다. LLM이 코드펜스 없이 잘 응답하면 문제없지만, 더 엄격하게 하려면 `with_structured_output` 같은 구조화 출력 기능을 쓰는 게 나을 수도 있어요 — 다만 이건 `create_tool_calling_agent` 흐름과는 결이 달라서 지금 방식으로 우선 두었습니다.
 - **축소 스키마(2단계 폴백) 응답을 `DowntimeReport`로 감쌀 때** `causes`를 빈 리스트로 두고 `confidence_note`에 요약을 텍스트로 붙였습니다 — 원인 목록이 구조화되어 있지 않다는 뜻인데, 이 방식이 평가셋 채점(F-09)과 잘 맞을지는 확인이 필요합니다.

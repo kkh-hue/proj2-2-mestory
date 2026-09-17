@@ -33,7 +33,10 @@ from mcp.client.stdio import stdio_client
 from pydantic import BaseModel, Field, ValidationError
 
 try:
-    from langfuse.callback import CallbackHandler as LangfuseCallbackHandler
+    # langfuse>=3부터 CallbackHandler가 langfuse.callback → langfuse.langchain으로 옮겨졌고
+    # (langfuse.callback 모듈 자체가 없어짐), session_id/trace_name/metadata를 생성자가 아니라
+    # LangChain invoke config의 metadata(langfuse_* 키)로 받는 방식으로 바뀌었다.
+    from langfuse.langchain import CallbackHandler as LangfuseCallbackHandler
 except ImportError:  # langfuse가 아직 설치 안 됐을 때도 서비스는 뜨게
     LangfuseCallbackHandler = None  # type: ignore[assignment,misc]
 
@@ -123,16 +126,19 @@ def _build_llm() -> ChatOpenAI:
     )
 
 
-def _build_callbacks(session_id: str | None, line_id: str | None, equipment_id: str | None) -> list:
+def _build_run_config(session_id: str | None, line_id: str | None, equipment_id: str | None) -> dict:
+    """AgentExecutor.ainvoke(config=...)에 넘길 값. Langfuse 콜백은 이제 생성자가 아니라
+    invoke config의 metadata(langfuse_* 키)로 session_id/trace_name을 받는다."""
     if LangfuseCallbackHandler is None or not os.getenv("LANGFUSE_PUBLIC_KEY"):
-        return []
-    return [
-        LangfuseCallbackHandler(
-            session_id=session_id,
-            trace_name="downtime_report",
-            metadata={"line_id": line_id, "equipment_id": equipment_id},
-        )
-    ]
+        return {}
+    metadata = {
+        "langfuse_trace_name": "downtime_report",
+        "line_id": line_id,
+        "equipment_id": equipment_id,
+    }
+    if session_id:
+        metadata["langfuse_session_id"] = session_id
+    return {"callbacks": [LangfuseCallbackHandler()], "metadata": metadata}
 
 
 def _escape_braces(text: str) -> str:
@@ -182,7 +188,7 @@ async def _run_agent_json(
     schema_json: str,
     user_input: str,
     chat_history: list[BaseMessage],
-    callbacks: list,
+    run_config: dict,
     extra_instruction: str = "",
 ) -> dict:
     prompt = _build_prompt(schema_json, extra_instruction)
@@ -195,7 +201,7 @@ async def _run_agent_json(
     )
     result = await executor.ainvoke(
         {"input": user_input, "chat_history": chat_history},
-        config={"callbacks": callbacks} if callbacks else {},
+        config=run_config,
     )
     return _extract_json(result["output"])
 
@@ -215,7 +221,7 @@ def _fallback_report(equipment_id: str, line_id: str, period: str) -> DowntimeRe
 async def _generate_with_retries(
     tools: list,
     llm: ChatOpenAI,
-    callbacks: list,
+    run_config: dict,
     user_input: str,
     chat_history: list[BaseMessage],
     equipment_label: str,
@@ -228,7 +234,7 @@ async def _generate_with_retries(
 
     # ── 1차 시도 ──
     try:
-        data = await _run_agent_json(tools, llm, full_schema, user_input, chat_history, callbacks)
+        data = await _run_agent_json(tools, llm, full_schema, user_input, chat_history, run_config)
         return DowntimeReport.model_validate(data)
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
         logger.warning("1차 리포트 생성 실패, 프롬프트 재시도: %s", exc)
@@ -241,7 +247,7 @@ async def _generate_with_retries(
             full_schema,
             user_input,
             chat_history,
-            callbacks,
+            run_config,
             extra_instruction=(
                 "방금 응답이 스키마를 지키지 못했다. 반드시 JSON 스키마 그대로, "
                 "다른 텍스트 없이 JSON 객체 하나만 다시 응답해라."
@@ -259,7 +265,7 @@ async def _generate_with_retries(
             simplified_schema,
             user_input,
             chat_history,
-            callbacks,
+            run_config,
             extra_instruction="구조가 복잡해 계속 실패했을 수 있다. 더 단순한 스키마로 다시 응답해라.",
         )
         simplified = _SimplifiedReport.model_validate(data)
@@ -302,7 +308,7 @@ async def generate_report(
     )
 
     chat_history = _SESSION_STORE.get(session_id, []) if session_id else []
-    callbacks = _build_callbacks(session_id, line_id, equipment_id)
+    run_config = _build_run_config(session_id, line_id, equipment_id)
 
     server_params = StdioServerParameters(
         command=sys.executable,
@@ -320,7 +326,7 @@ async def generate_report(
 
                 llm = _build_llm()
                 report = await _generate_with_retries(
-                    tools, llm, callbacks, user_input, chat_history, equipment_label, line_label, period
+                    tools, llm, run_config, user_input, chat_history, equipment_label, line_label, period
                 )
     except Exception as exc:  # MCP 연결/프로세스 기동 실패 등 인프라 레벨 오류
         logger.error("MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", exc)
