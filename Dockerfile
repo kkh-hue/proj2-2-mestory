@@ -14,4 +14,6 @@ COPY mcp_server/ ./mcp_server/
 COPY skills/ ./skills/
 
 EXPOSE 8000
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Railway 등 PaaS는 컨테이너가 들을 포트를 PORT 환경변수로 알려준다.
+# docker-compose는 PORT를 안 주므로 기본값 8000으로 그대로 동작한다.
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
