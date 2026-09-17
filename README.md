@@ -2,6 +2,28 @@
 
 설비 정지(다운타임) 로그를 분석해 원인·심각도·근거·권장 조치를 담은 리포트를 자동으로 만들어주는 서비스입니다. 최종 원인 확정과 조치 실행은 항상 사람이 하며, 이 서비스는 판단을 돕는 근거와 설명을 제공합니다. 자세한 배경과 요구사항은 [docs/MESTORY_PRD.md](./docs/MESTORY_PRD.md), 기능별 우선순위는 [docs/MESTORY_기능목록.md](./docs/MESTORY_기능목록.md)를 참고하세요.
 
+## 🚀 배포
+
+- **배포 URL**: https://mestory.up.railway.app (Railway)
+- **헬스체크**: `GET /health` → `{"status":"ok"}`
+- **리포트 생성**: `POST /report`
+
+```bash
+curl https://mestory.up.railway.app/health
+
+curl -X POST https://mestory.up.railway.app/report \
+  -H "Content-Type: application/json" \
+  -d '{"line_id":"LINE-A","equipment_id":"EQ-004","date_from":"2026-01-03","date_to":"2026-01-03"}'
+```
+
+## 🤖 LLM 출력 계약 (필수 조건 3)
+
+`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 실패 시 3단계 재시도/폴백(프롬프트 재시도 → 축소 스키마 → 고정 안전 응답)을 거칩니다.
+
+- 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`(114행), `executor.ainvoke(...)`(약 200행)
+- **실제 호출 검증**: 위 배포 URL의 `/report`를 직접 호출하면 실제 LLM이 생성한 원인 분석 리포트가 반환됩니다 (Postgres 실데이터 기반). Langfuse에도 트레이스(입력/출력/비용/지연)가 남습니다.
+- 상세 테스트 로그·발견한 버그·수정 내역: [backend/README.md](./backend/README.md) 5~7번 항목 참고
+
 ## 팀 정보
 
 
