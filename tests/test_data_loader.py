@@ -7,6 +7,8 @@ monkeypatch 란?
 """
 
 import os
+import sys
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -41,6 +43,85 @@ def test_DB_모드인데_주소가_없으면_에러(monkeypatch):
     monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
     with pytest.raises(RuntimeError, match="DB 접속 주소"):
         data_loader.load_error_codes()
+
+
+@pytest.mark.no_data
+@pytest.mark.parametrize("loader", [loader for loader, _ in LOADERS],
+                         ids=["downtime", "error_codes", "maintenance", "equipment"])
+def test_DB_모드의_모든_로더는_CSV가_아닌_DB를_읽는다(monkeypatch, loader):
+    """배포 이미지에 data/ 폴더가 없어도, DB 모드에서는 각 로더가 DB 경로만 사용한다."""
+    db_reads = []
+
+    def fake_read_db(file_name):
+        db_reads.append(file_name)
+        if file_name == DOWNTIME_FILE:
+            return pd.DataFrame({"start_time": ["2026-08-10 09:00"]})
+        return pd.DataFrame()
+
+    def csv_must_not_be_read(file_name):
+        raise AssertionError(f"DB 모드에서 CSV를 읽으면 안 됩니다: {file_name}")
+
+    monkeypatch.setenv("MESTORY_DATA_SOURCE", "db")
+    monkeypatch.setattr(data_loader, "_read_db", fake_read_db)
+    monkeypatch.setattr(data_loader, "_read_csv", csv_must_not_be_read)
+
+    loader()
+
+    assert len(db_reads) == 1
+
+
+@pytest.mark.no_data
+@pytest.mark.parametrize(
+    "file_name, columns, rows",
+    [
+        (DOWNTIME_FILE, ["log_id", "start_time", "downtime_min"],
+         [("LOG-001", "2026-08-10 09:00", 12.5)]),
+        (ERROR_CODE_FILE, ["error_code"], [("E-102",)]),
+        (MAINTENANCE_FILE, ["maintenance_id"], [("MNT-001",)]),
+        (EQUIPMENT_FILE, ["equipment_id"], [("EQ-001",)]),
+    ],
+    ids=["downtime", "error_codes", "maintenance", "equipment"],
+)
+def test_DB_읽기는_DATABASE_URL로_Postgres에_질의한다(monkeypatch, file_name, columns, rows):
+    """DB 모드의 실제 접속 코드가 DATABASE_URL과 테이블별 SQL을 사용한다."""
+    requested_urls = []
+    executed_sql = []
+
+    class FakeCursor:
+        def __init__(self):
+            self.description = [SimpleNamespace(name=column) for column in columns]
+
+        def fetchall(self):
+            return rows
+
+    class FakeConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+        def execute(self, sql):
+            executed_sql.append(sql)
+            return FakeCursor()
+
+    def connect(url, *, connect_timeout):
+        requested_urls.append((url, connect_timeout))
+        return FakeConnection()
+
+    database_url = "postgresql://user:password@db:5432/mestory"
+    monkeypatch.setenv("MESTORY_DATA_SOURCE", "db")
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.delenv("DATABASE_PUBLIC_URL", raising=False)
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
+
+    result = data_loader._read_table(file_name)
+
+    assert requested_urls == [(database_url, 10)]
+    assert executed_sql == [data_loader.SQL[file_name]]
+    assert list(result.columns) == columns
+    if file_name == DOWNTIME_FILE:
+        assert result["downtime_min"].dtype == float
 
 
 @pytest.mark.no_data

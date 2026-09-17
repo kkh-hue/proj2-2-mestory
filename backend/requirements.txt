@@ -8,6 +8,7 @@ langfuse>=4.0          # 필수 조건 4. 3.x부터 CallbackHandler가 langfuse.
 mcp>=1.29,<2           # 필수 조건 5 — FastMCP. mcp 2.x부터 FastMCP가 MCPServer로 이름이 바뀌고
                         # mcp.server.fastmcp가 없어져서, mcp_server/server.py(v1 API)가 깨진다
 pandas>=2.2            # mcp_server/tools가 씀 — 같은 컨테이너에서 서브프로세스로 띄우므로 여기에도 필요
+psycopg[binary]>=3.2   # MESTORY_DATA_SOURCE=db 일 때 mcp_server/tools/data_loader.py가 Postgres를 조회
 langchain>=0.3,<1.0        # 1.0부터 create_tool_calling_agent/AgentExecutor가 사라지고
                             # 그 자리를 대체한 create_agent는 내부적으로 LangGraph를 쓴다 —
                             # 이 프로젝트는 LangGraph 금지라 0.3.x(마지막 pre-1.0)에 고정한다.
