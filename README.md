@@ -2,11 +2,12 @@
 
 설비 정지(다운타임) 로그를 분석해 원인·심각도·근거·권장 조치를 담은 리포트를 자동으로 만들어주는 서비스입니다. 최종 원인 확정과 조치 실행은 항상 사람이 하며, 이 서비스는 판단을 돕는 근거와 설명을 제공합니다. 자세한 배경과 요구사항은 [docs/MESTORY_PRD.md](./docs/MESTORY_PRD.md), 기능별 우선순위는 [docs/MESTORY_기능목록.md](./docs/MESTORY_기능목록.md)를 참고하세요.
 
-## 🚀 배포
+## 🚀 배포 (Railway)
 
-- **배포 URL**: https://mestory.up.railway.app (Railway)
-- **헬스체크**: `GET /health` → `{"status":"ok"}`
-- **리포트 생성**: `POST /report`
+- **프론트엔드**: https://mestory-app.up.railway.app (뼈대만 배포됨, 실제 UI는 강경희 님 구현 예정)
+- **백엔드 API**: https://mestory.up.railway.app
+  - **헬스체크**: `GET /health` → `{"status":"ok"}`
+  - **리포트 생성**: `POST /report`
 
 ```bash
 curl https://mestory.up.railway.app/health
