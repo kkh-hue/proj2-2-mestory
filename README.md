@@ -1,8 +1,8 @@
-# AI Human 7기 — 조별 프로젝트 저장소
+# MESTORY — 설비 다운타임 원인 분석 리포트 자동 생성 서비스
 
-이 저장소는 **조별 프로젝트 공간**입니다. 조원 전원이 write 권한을 갖습니다.
+설비 정지(다운타임) 로그를 분석해 원인·심각도·근거·권장 조치를 담은 리포트를 자동으로 만들어주는 서비스입니다. 최종 원인 확정과 조치 실행은 항상 사람이 하며, 이 서비스는 판단을 돕는 근거와 설명을 제공합니다. 자세한 배경과 요구사항은 [docs/MESTORY_PRD.md](./docs/MESTORY_PRD.md), 기능별 우선순위는 [docs/MESTORY_기능목록.md](./docs/MESTORY_기능목록.md)를 참고하세요.
 
-## 팀 정보 (프로젝트 시작 시 조장이 작성)
+## 팀 정보
 
 
 | 항목     | 내용               |
@@ -31,23 +31,20 @@
 5. **커밋은 본인 계정으로**: 자기가 한 작업은 자기 계정으로 커밋해야 이 repo가 본인 포트폴리오 증빙이 됩니다. 함께 작업했다면 커밋 메시지에 `Co-authored-by:`를 추가하세요.
 6. 다른 조 저장소도 읽을 수 있습니다 — 보고 배우는 것은 권장, 복사 제출은 금지.
 
-## 📁 폴더 구조 (2차 프로젝트)
+## 📁 필수 조건 매핑 (2차 프로젝트)
 
-필수 조건과 제출물에 맞춰 자리를 미리 잡아 두었습니다. 쓰지 않는 것은 지우고, 필요한 것은 더하세요.
+| 폴더/파일 | 필수 조건 |
+| --- | --- |
+| `backend/` (특히 `services/llm.py`) | 필수 2 — FastAPI, LLM 호출 단일 창구 |
+| `skills/SKILL.md` | 필수 5 — 도메인 지식·판단 기준 |
+| `mcp_server/` | 필수 5 — MCP 서버 |
+| `evals/` | 필수 4 — 평가셋 30건 |
+| `EVAL_REPORT.md` | 제출물 — 개선 전후 지표 |
+| `docker-compose.yml` | 필수 2 — `docker compose up` 한 줄 실행 |
 
-```
-backend/          FastAPI (필수 2) — services/llm.py 한곳에 LLM 호출을 모읍니다
-skills/           도메인 지식·판단 기준 (필수 5)
-mcp_server/       MCP 서버 (필수 5)
-evals/            평가셋 30건 (필수 4)
-EVAL_REPORT.md    개선 전후 지표 (제출물)
-docker-compose.yml  `docker compose up` 한 줄 실행 (필수 2)
-```
+**9/23(수)까지 문제 정의와 `evals/`를 확정하세요.** 추석 연휴 전에 이 둘이 있어야 연휴 동안 각자 진행할 수 있습니다.
 
-**착수 후 9/23(수)까지 문제 정의와 `evals/`를 채우세요.** 추석 연휴 전에 이 둘이 있어야 연휴 동안 각자 진행할 수 있습니다.
-
-각 폴더가 무엇이고 무엇을 채워야 하는지는 **[docs/SCAFFOLD.md](./docs/SCAFFOLD.md)**에 정리돼 있습니다.
-자세한 요구사항은 2차 프로젝트 가이드를 참고하세요.
+각 폴더가 무엇이고 무엇을 채워야 하는지는 **[docs/SCAFFOLD.md](./docs/SCAFFOLD.md)**, 실제 구조는 아래 "폴더 구조" 섹션을 참고하세요.
 
 ## 🔑 시크릿 규칙 (위반 시 전원에게 노출됩니다)
 
@@ -88,10 +85,32 @@ git push                             # PR이 자동 갱신됨
 
 ## 폴더 구조
 
-- `docs/` — 기획서·회의록·발표자료
-- `docs/specs/` — 기능별 Spec 문서 (`_example.md` 형식 참고, AI 에이전트에게 구현을 시키기 전 여기에 먼저 작성)
-- `AGENTS.md` / `CLAUDE.md` — AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
-- 소스 코드 구조는 조에서 자율 결정 (README에 실행 방법 필수 기재)
+```
+backend/                  FastAPI 백엔드
+├── main.py                 진입점 (/health)
+├── services/llm.py         LLM 호출 단일 창구 — 출력 계약 검증·재시도/폴백·Langfuse 트레이스
+└── README.md                진행상황
+
+mcp_server/                MCP 서버
+├── server.py                FastMCP 진입점
+├── tools/
+│   ├── data_loader.py        CSV 데이터 로딩 (추후 DB 전환 시 여기만 수정)
+│   └── downtime.py           조건별 정지 기록 조회
+└── README.md                 진행상황
+
+skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석)
+evals/                      평가셋 (dataset.jsonl, 최소 30건)
+EVAL_REPORT.md              개선 전후 지표
+
+docs/
+├── MESTORY_PRD.md            제품 요구사항 문서
+├── MESTORY_기능목록.md       기능 목록 (P0/P1, 범위 밖)
+├── SCAFFOLD.md               초기 스캐폴딩 안내
+└── specs/                    기능별 Spec 문서 (`_example.md` 형식)
+
+docker-compose.yml / Dockerfile   `docker compose up` 한 줄로 api+db 실행
+AGENTS.md / CLAUDE.md       AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
+```
 
 ## 질문
 
