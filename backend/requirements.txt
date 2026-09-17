@@ -14,6 +14,4 @@ langchain>=0.3,<1.0        # 1.0부터 create_tool_calling_agent/AgentExecutor�
                             # 이 프로젝트는 LangGraph 금지라 0.3.x(마지막 pre-1.0)에 고정한다.
 langchain-openai>=0.2,<1.0  # 위 langchain과 같은 라인으로 고정
 langchain-mcp-adapters>=0.1,<0.2  # 0.2 이상은 langchain-core 1.x 전용 messages.content 서브모듈을 요구해서 0.1.x로 낮춤
-psycopg[binary]>=3.2    # mcp_server/tools/data_loader.py의 DB 모드(MESTORY_DATA_SOURCE=db)가 씀 —
-                        # 같은 컨테이너에서 서브프로세스로 띄우므로 여기에도 필요
 # asyncpg>=0.30       # Postgres를 쓴다면
