@@ -135,16 +135,23 @@ def _build_callbacks(session_id: str | None, line_id: str | None, equipment_id: 
     ]
 
 
+def _escape_braces(text: str) -> str:
+    """ChatPromptTemplate은 기본적으로 메시지 문자열을 f-string 템플릿으로 해석해서
+    `{`/`}`를 변수 자리로 취급한다. JSON 스키마·SKILL.md 등 우리가 끼워 넣는 텍스트는
+    변수가 아니라 순수 문자열이므로, 중괄호를 이스케이프해서 리터럴로 살아남게 한다."""
+    return text.replace("{", "{{").replace("}", "}}")
+
+
 def _build_prompt(schema_json: str, extra_instruction: str = "") -> ChatPromptTemplate:
     system = (
         "너는 제조 현장 설비 다운타임 원인 분석 에이전트다.\n\n"
         "# 도메인 규칙 (반드시 따를 것)\n"
-        f"{_load_skill_text()}\n\n"
+        f"{_escape_braces(_load_skill_text())}\n\n"
         "# 출력 형식\n"
         "위 규칙과 도구 조회 결과를 근거로, 아래 JSON 스키마를 그대로 따르는 JSON 객체 하나만 출력해라. "
         "설명 문장이나 마크다운 코드펜스 없이 순수 JSON만 반환한다.\n"
-        f"{schema_json}"
-        + (f"\n\n{extra_instruction}" if extra_instruction else "")
+        f"{_escape_braces(schema_json)}"
+        + (f"\n\n{_escape_braces(extra_instruction)}" if extra_instruction else "")
     )
     return ChatPromptTemplate.from_messages(
         [
