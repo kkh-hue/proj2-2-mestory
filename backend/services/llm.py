@@ -29,7 +29,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp.client.stdio import get_default_environment, stdio_client
 from pydantic import BaseModel, Field, ValidationError
 
 try:
@@ -50,6 +50,17 @@ SKILL_PATH = REPO_ROOT / "skills" / "SKILL.md"
 # (server.py를 파일 경로로 직접 실행하면, 이후 팀원이 안에서 `from .tools...`처럼
 #  상대 import를 쓰는 순간 "attempted relative import" 에러가 나기 때문에 -m 방식을 쓴다.)
 MCP_SERVER_MODULE = "mcp_server.server"
+
+# MCP SDK는 보안상 서브프로세스에 PATH 등 최소 환경변수만 기본으로 물려준다
+# (mcp.client.stdio.get_default_environment). data_loader.py가 DB 모드로
+# 동작하려면 DATABASE_URL 등을 명시적으로 넘겨야 한다 — 안 넘기면 항상 csv 모드로
+# 동작하는데, 배포 환경엔 CSV가 없어서 결국 실패한다.
+MCP_ENV_PASSTHROUGH = (
+    "MESTORY_DATA_SOURCE",
+    "MESTORY_DATA_DIR",
+    "DATABASE_URL",
+    "DATABASE_PUBLIC_URL",
+)
 
 FALLBACK_MESSAGE = "자동 분석 실패 — 원본 로그 확인 필요"
 
@@ -107,6 +118,15 @@ _SESSION_HISTORY_LIMIT = 10  # 세션당 보관할 최근 메시지 수
 
 def _load_skill_text() -> str:
     return SKILL_PATH.read_text(encoding="utf-8")
+
+
+def _mcp_subprocess_env() -> dict[str, str]:
+    env = get_default_environment()
+    for key in MCP_ENV_PASSTHROUGH:
+        value = os.getenv(key)
+        if value:
+            env[key] = value
+    return env
 
 
 def get_model_name() -> str:
@@ -314,6 +334,7 @@ async def generate_report(
         command=sys.executable,
         args=["-m", MCP_SERVER_MODULE],
         cwd=str(REPO_ROOT),
+        env=_mcp_subprocess_env(),
     )
 
     try:
