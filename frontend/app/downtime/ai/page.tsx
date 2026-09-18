@@ -33,7 +33,7 @@ export default function AiAnalysisChatPage() {
               <IconRobot />
             </span>
             <div>
-              <h3>AI 원인 어시스턴트</h3>
+              <h3>MESTORY 어시스턴트</h3>
               <p>MESTORY의 AI가 설비 데이터를 분석하여 원인을 알려드립니다.</p>
             </div>
           </div>
