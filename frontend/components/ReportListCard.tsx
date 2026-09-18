@@ -9,12 +9,12 @@ function formatDate(iso: string) {
   ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export default function ReportListCard({ report }: { report: ReportSummary }) {
+export default function ReportListCard({ report, highlight }: { report: ReportSummary; highlight?: boolean }) {
   const detailHref = `/reports/${report.id}`;
 
   return (
     <article className="report-list-card">
-      <div className="report-list-icon report-list-icon-soft">
+      <div className={`report-list-icon ${highlight ? "report-list-icon-solid" : "report-list-icon-soft"}`}>
         <IconReport />
       </div>
       <div className="report-list-body">

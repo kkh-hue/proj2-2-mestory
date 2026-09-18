@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import ReportListCard from "../../components/ReportListCard";
 import Topbar from "../../components/Topbar";
-import { IconChevronDown, IconChevronRight, IconSearch } from "../../components/icons";
+import { IconChevronDown, IconChevronRight, IconPlus, IconReport, IconSearch } from "../../components/icons";
 import { listReports } from "../../lib/api";
 import type { ReportSummary } from "../../types/report";
 
@@ -38,10 +38,16 @@ export default function ReportsPage() {
         title="리포트"
         subtitle="AI 원인분석이 생성한 리포트를 확인하세요."
         action={
-          <label className="search-box">
-            <IconSearch />
-            <input type="text" placeholder="리포트 검색" aria-label="리포트 검색" disabled />
-          </label>
+          <>
+            <label className="search-box">
+              <IconSearch />
+              <input type="text" placeholder="리포트 검색" aria-label="리포트 검색" />
+            </label>
+            <Link href="/downtime/ai" className="new-analysis-button">
+              <IconPlus />
+              새 리포트 생성
+            </Link>
+          </>
         }
       />
 
@@ -73,8 +79,8 @@ export default function ReportsPage() {
               </p>
             ) : (
               <div className="report-list">
-                {reports.map((report) => (
-                  <ReportListCard report={report} key={report.id} />
+                {reports.map((report, index) => (
+                  <ReportListCard report={report} highlight={index === 0} key={report.id} />
                 ))}
               </div>
             )}
@@ -90,6 +96,9 @@ export default function ReportsPage() {
               <ul className="shared-report-list">
                 {recent.map((report) => (
                   <li key={report.id}>
+                    <span className="shared-avatar shared-avatar-purple">
+                      <IconReport />
+                    </span>
                     <div className="shared-report-body">
                       <span className="shared-report-name">{report.line_id} · {report.equipment_id}</span>
                       <span className="shared-report-title">{report.recommended_action}</span>
