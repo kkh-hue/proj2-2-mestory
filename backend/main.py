@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from .db import get_report, init_db, list_chat_turns, list_reports
+from .db import get_dashboard_summary, get_report, init_db, list_chat_turns, list_reports
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -205,3 +205,9 @@ async def get_report_detail(report_id: str) -> dict:
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report
+
+
+@app.get("/dashboard")
+async def get_dashboard() -> dict:
+    """대시보드 화면용 — KPI·추이·최근 이벤트·최근 리포트를 한 번에 (backend/db.py에서 집계)."""
+    return await get_dashboard_summary()
