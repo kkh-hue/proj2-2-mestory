@@ -489,11 +489,18 @@ async def list_alerts(limit: int = 30) -> list[dict]:
 _RECENT_WINDOW_MINUTES = 7 * 24 * 60  # "최근 7일" 가동률 계산용
 
 
+_ATTENTION_UTILIZATION_THRESHOLD = 95.0
+# ⚠️ recent_downtime_count > 0 (다운타임 1건이라도 있으면 "주의")로 판정하던
+# 이전 버전은 실데이터에서 57대 전부가 "주의"로 뜨는 버그였다(거의 모든 설비가
+# 최근 7일 안에 짧은 다운타임을 한 번씩은 겪음). 가동률 분포(약 90~98%, 대부분
+# 95% 이상에 몰려 있고 95.0% 아래는 소수 이상치)를 보고 이 값으로 다시 잡았다.
+
+
 async def list_equipment_status() -> list[dict]:
     """설비별 상태·가동률·마지막 점검일을 계산한다 (그대로 저장된 컬럼이 아니라 파생값).
 
     - 상태: downtime_log에 아직 안 끝난(end_time is null) 기록이 있으면 "정지",
-      최근 7일 안에 다운타임이 한 번이라도 있었으면 "주의", 없으면 "정상".
+      가동률이 _ATTENTION_UTILIZATION_THRESHOLD 미만이면 "주의", 아니면 "정상".
     - 가동률: 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
       데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
     """
@@ -511,10 +518,7 @@ async def list_equipment_status() -> list[dict]:
                     ) as is_down,
                     coalesce(sum(d2.downtime_min) filter (
                         where d2.start_time >= now() - interval '7 days' and d2.downtime_min > 0
-                    ), 0) as recent_downtime_min,
-                    count(d2.log_id) filter (
-                        where d2.start_time >= now() - interval '7 days'
-                    ) as recent_downtime_count
+                    ), 0) as recent_downtime_min
                 from equipment_master e
                 left join downtime_log d2 on d2.equipment_id = e.equipment_id
                 group by e.equipment_id, e.line_id, e.equipment_type
@@ -527,14 +531,14 @@ async def list_equipment_status() -> list[dict]:
         return []
 
     result: list[dict] = []
-    for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min, recent_downtime_count in rows:
+    for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min in rows:
+        utilization_pct = max(0.0, min(100.0, 100.0 - (float(recent_downtime_min or 0) / _RECENT_WINDOW_MINUTES * 100)))
         if is_down:
             status = "정지"
-        elif recent_downtime_count and recent_downtime_count > 0:
+        elif utilization_pct < _ATTENTION_UTILIZATION_THRESHOLD:
             status = "주의"
         else:
             status = "정상"
-        utilization_pct = max(0.0, min(100.0, 100.0 - (float(recent_downtime_min or 0) / _RECENT_WINDOW_MINUTES * 100)))
         result.append({
             "equipment_id": equipment_id,
             "line_id": line_id,
