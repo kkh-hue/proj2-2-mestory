@@ -21,6 +21,9 @@ export interface DowntimeReport {
   unclassified_count: number;
   confidence_note: string;
   recommended_action: string;
+  // 멀티모달 (docs/specs/multimodal.md). 이미지를 안 보낸 요청이면 null / false.
+  visual_findings: string[] | null;
+  used_image: boolean;
 }
 
 export interface ReportRequest {
@@ -29,4 +32,7 @@ export interface ReportRequest {
   date_from?: string | null; // YYYY-MM-DD, 정지 시작일 기준
   date_to?: string | null; // YYYY-MM-DD, 정지 시작일 기준
   session_id?: string | null;
+  // 에러 화면·설비 사진 data URL ("data:image/png;base64,...").
+  // 최대 3장, 1장 5MB, 합계 10MB, png·jpeg·webp만 (backend/main.py에서 검증).
+  images?: string[] | null;
 }
