@@ -61,6 +61,38 @@ export function IconPlus(props: SVGProps<SVGSVGElement>) {
   return <svg {...base({ strokeWidth: 2.4, ...props })}><path d="M12 5.5v13M5.5 12h13" /></svg>;
 }
 
+export function IconSnowflake(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M12 3.5v17M6 6l12 12M18 6 6 18" /><path d="m9 4.5 3 2.2 3-2.2M9 19.5l3-2.2 3 2.2M4.5 9l2.2 3-2.2 3M19.5 9l-2.2 3 2.2 3" /></svg>;
+}
+
+export function IconBolt(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base({ strokeLinejoin: "round" as const, ...props })}><path d="M13 3 5 13.5h5.5L11 21l8-11h-5.5L13 3Z" /></svg>;
+}
+
+export function IconTriangleWarning(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M12 4 21 19.5H3L12 4Z" /><path d="M12 10v4" /><circle cx="12" cy="16.7" r="0.9" fill="currentColor" stroke="none" /></svg>;
+}
+
+export function IconDots(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base({ strokeLinecap: "round" as const, ...props })}><circle cx="6.5" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="17.5" cy="12" r="1.1" fill="currentColor" stroke="none" /></svg>;
+}
+
+export function IconShield(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M12 3.5 19 6.3V11c0 5-3 8.1-7 9.5-4-1.4-7-4.5-7-9.5V6.3L12 3.5Z" /><path d="m8.7 12 2.3 2.3L15.3 10" /></svg>;
+}
+
+export function IconChevronDown(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base({ strokeWidth: 2.2, ...props })}><path d="M5.5 9 12 15.5 18.5 9" /></svg>;
+}
+
+export function IconAlertCircle(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><circle cx="12" cy="12" r="8.2" /><path d="M12 8v4.5" /><circle cx="12" cy="15.6" r="0.9" fill="currentColor" stroke="none" /></svg>;
+}
+
+export function IconLayers(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M12 3.5 20.5 8 12 12.5 3.5 8Z" /><path d="M3.5 12 12 16.5 20.5 12" /><path d="M3.5 16 12 20.5 20.5 16" /></svg>;
+}
+
 export function IconSparkle(props: SVGProps<SVGSVGElement>) {
   return <svg {...base({ strokeWidth: 1.6, ...props })}><path d="M12 3.5l1.4 4.2 4.2 1.4-4.2 1.4L12 14.7l-1.4-4.2-4.2-1.4 4.2-1.4L12 3.5Z" /><path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z" /></svg>;
 }
