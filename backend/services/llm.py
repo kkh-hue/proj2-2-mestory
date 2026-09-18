@@ -25,13 +25,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import get_default_environment, stdio_client
 from pydantic import BaseModel, Field, ValidationError
+
+from ..db import load_chat_history, save_message, save_report
 
 try:
     # langfuse>=3부터 CallbackHandler가 langfuse.callback → langfuse.langchain으로 옮겨졌고
@@ -127,17 +129,9 @@ class _SimplifiedReport(BaseModel):
     recommended_action: str
 
 
-# ─────────────────────────────────────────────
-# 세션별 대화 기록 (F-07용 프로토타입)
-#
-# 지금은 프로세스 메모리의 dict 하나로 단순화했다. 서버가 재시작되면 사라지고,
-# 여러 워커로 스케일 아웃하면 워커마다 따로 논다 — 그래서 "다음 세션에 수동으로
-# 다시 주입"하는 것과 원리가 같다. 프로덕션에서는 이 dict 자리에 DB나 벡터DB 같은
-# 영속 저장소가 들어가야 한다 (LangGraph는 이 프로젝트에서 안 쓰므로 LangGraph의
-# store/checkpointer는 해당 없음 — docs/MESTORY_기능목록.md 범위 밖 참고).
-# ─────────────────────────────────────────────
-_SESSION_STORE: dict[str, list[BaseMessage]] = {}
-_SESSION_HISTORY_LIMIT = 10  # 세션당 보관할 최근 메시지 수
+# 세션별 대화 기록은 backend/db.py(Postgres)에 저장한다 — 프로세스 메모리가 아니라서
+# 재배포·재시작해도 남는다 (F-07). 세션당 보관할 최근 메시지 수(사람+AI 합산).
+_SESSION_HISTORY_LIMIT = 10
 
 
 def _load_skill_text() -> str:
@@ -273,6 +267,7 @@ def _build_user_messages(
     line_label: str,
     equipment_label: str,
     images: list[str] | None,
+    message: str | None = None,
 ) -> tuple[list[BaseMessage], str]:
     """에이전트에 넘길 human 메시지와, 대화 기록에 남길 '텍스트만' 버전을 함께 만든다.
 
@@ -284,11 +279,20 @@ def _build_user_messages(
 
     이미지가 없으면 content를 '문자열'로 둔다 = 기존과 완전히 같은 경로(회귀 없음).
     이미지가 있으면 content를 '리스트'로 만든다 (text 조각 + image_url 조각들).
+
+    message: AI 원인분석 대화형 화면에서 사용자가 직접 입력한 자유 텍스트 질문 (F-07).
+        없으면(기본값 None) 아래 텍스트가 예전과 한 글자도 다르지 않다 — 회귀 없음.
     """
     text = (
         "아래 조건에 해당하는 정지 기록을 MCP 도구로 조회하고, 원인 분석 리포트를 생성해줘.\n"
         f"- 기간: {period}\n- 라인: {line_label}\n- 설비: {equipment_label}"
     )
+
+    if message:
+        text += (
+            f"\n\n사용자 질문: {message}\n"
+            "위 질문에 특히 집중해서 답해라 — recommended_action·confidence_note에 질문에 대한 답을 반영해라."
+        )
 
     if not images:
         # 이미지가 없을 때의 프롬프트는 기존과 한 글자도 다르지 않다.
@@ -462,15 +466,25 @@ async def generate_report(
     date_to: str | None = None,
     session_id: str | None = None,
     images: list[str] | None = None,
+    message: str | None = None,
+    report_id: str | None = None,
 ) -> DowntimeReport:
     """조건에 맞는 정지 기록을 MCP 도구로 조회해 원인 분석 리포트를 생성한다.
 
     session_id를 주면 같은 세션의 이전 대화를 프롬프트에 같이 넣어 후속 질문에
-    맥락을 유지한다 (F-07, docs/MESTORY_기능목록.md 참고).
+    맥락을 유지한다 (F-07, docs/MESTORY_기능목록.md 참고). 대화 기록은 이제
+    backend/db.py(Postgres)에 저장되므로 재배포해도 남는다.
 
     images: 이미지 data URL 목록 (예: "data:image/png;base64,..."). 주면 LLM이
         텍스트 조건·MCP 조회 결과와 함께 이미지도 근거로 본다 (docs/specs/multimodal.md).
         형식·용량 검증은 라우터(backend/main.py)에서 끝내고 오므로 여기서는 담기만 한다.
+
+    message: AI 원인분석 대화형 화면의 자유 텍스트 질문 (F-07). 없어도 기존 리포트
+        생성 흐름과 동일하게 동작한다.
+
+    report_id: main.py가 미리 만들어 건네는 ID. DB에 리포트를 저장할 때 이 ID를 쓰고,
+        main.py는 응답 헤더(X-Report-Id)로 프론트에 같은 ID를 돌려줘서 "상세 리포트
+        보기"가 재조회 없이 바로 이 리포트를 가리킬 수 있게 한다.
     """
     period = f"{date_from or '전체'} ~ {date_to or '전체'}"
     equipment_label = equipment_id or "전체 설비"
@@ -484,9 +498,10 @@ async def generate_report(
         line_label=line_label,
         equipment_label=equipment_label,
         images=images,
+        message=message,
     )
 
-    chat_history = _SESSION_STORE.get(session_id, []) if session_id else []
+    chat_history = await load_chat_history(session_id, _SESSION_HISTORY_LIMIT) if session_id else []
     run_config = _build_run_config(session_id, line_id, equipment_id)
 
     server_params = StdioServerParameters(
@@ -523,12 +538,14 @@ async def generate_report(
         # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
         report.visual_findings = None
 
+    if report_id:
+        await save_report(report_id, report, session_id)
+
     if session_id:
         # ⚠️ 대화 기록에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
         #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
         #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).
-        chat_history.append(HumanMessage(content=history_text))
-        chat_history.append(AIMessage(content=report.model_dump_json()))
-        _SESSION_STORE[session_id] = chat_history[-_SESSION_HISTORY_LIMIT:]
+        await save_message(session_id, "user", history_text)
+        await save_message(session_id, "assistant", report.model_dump_json(), report_id=report_id)
 
     return report

@@ -1,4 +1,4 @@
-import type { DowntimeReport, ReportRequest } from "../types/report";
+import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
 
 export class ReportApiError extends Error {
   constructor(
@@ -10,11 +10,7 @@ export class ReportApiError extends Error {
   }
 }
 
-// session_id는 호출자가 관리한다. 리포트 생성 중복을 피하려고 재시도하지 않는다.
-export async function createReport(
-  request: ReportRequest,
-  options?: { signal?: AbortSignal },
-): Promise<DowntimeReport> {
+function getBaseUrl(): string {
   let baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
   if (!baseUrl) {
     if (process.env.NODE_ENV === "production") {
@@ -22,8 +18,25 @@ export async function createReport(
     }
     baseUrl = "http://localhost:8000";
   }
+  return baseUrl.replace(/\/+$/, "");
+}
 
-  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/report`, {
+async function parseErrorBody(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    // 프록시/서버가 JSON 대신 텍스트를 반환해도 원문을 보존한다.
+    return text;
+  }
+}
+
+// session_id는 호출자가 관리한다. 리포트 생성 중복을 피하려고 재시도하지 않는다.
+async function postReport(
+  request: ReportRequest,
+  options?: { signal?: AbortSignal },
+): Promise<{ report: DowntimeReport; reportId: string | null }> {
+  const response = await fetch(`${getBaseUrl()}/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
@@ -31,15 +44,48 @@ export async function createReport(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    let body: unknown = text;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      // 프록시/서버가 JSON 대신 텍스트를 반환해도 원문을 보존한다.
-    }
-    throw new ReportApiError(response.status, body);
+    throw new ReportApiError(response.status, await parseErrorBody(response));
   }
 
-  return (await response.json()) as DowntimeReport;
+  const report = (await response.json()) as DowntimeReport;
+  return { report, reportId: response.headers.get("X-Report-Id") };
+}
+
+export async function createReport(
+  request: ReportRequest,
+  options?: { signal?: AbortSignal },
+): Promise<DowntimeReport> {
+  return (await postReport(request, options)).report;
+}
+
+// AI 원인분석 대화형 화면처럼 "방금 만든 리포트의 상세 페이지로 바로 이동"이 필요할 때 쓴다.
+export async function createReportWithId(
+  request: ReportRequest,
+  options?: { signal?: AbortSignal },
+): Promise<{ report: DowntimeReport; reportId: string | null }> {
+  return postReport(request, options);
+}
+
+export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
+  const response = await fetch(`${getBaseUrl()}/chat/${encodeURIComponent(sessionId)}`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as ChatTurn[];
+}
+
+export async function listReports(): Promise<ReportSummary[]> {
+  const response = await fetch(`${getBaseUrl()}/reports`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as ReportSummary[];
+}
+
+export async function getReport(reportId: string): Promise<SavedReport> {
+  const response = await fetch(`${getBaseUrl()}/reports/${encodeURIComponent(reportId)}`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as SavedReport;
 }

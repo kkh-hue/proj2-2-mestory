@@ -13,7 +13,7 @@ export default function DashboardPage() {
   return (
     <main className="page">
       <Topbar
-        title="다운타임 분석"
+        title="대시보드"
         subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다."
         date="2026.09.18"
         action={<NewAnalysisModal />}
