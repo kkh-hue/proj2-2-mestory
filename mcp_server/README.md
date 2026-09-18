@@ -27,6 +27,11 @@ python -m mcp_server.server
 - **반드시 `-m` 으로 실행**하세요. 파일 경로로 직접 실행하면 `from .tools ...` 상대 import 가 깨집니다.
 - 통신 방식은 stdio(표준 입출력)입니다. **`print()` 로 화면에 출력하면 통신이 깨지므로 금지**입니다.
 
+## 접근 제어
+
+이 서버는 **stdio(표준 입출력)로만** 노출됩니다. 인터넷에 열린 주소가 없고, 백엔드가 같은 컨테이너 안에서 자식 프로세스로 띄워 쓰기 때문에 외부에서 직접 호출할 수 없습니다.
+공개 `/mcp`(Streamable HTTP) endpoint 는 만들지 않았습니다 — 그쪽은 배포 담당 범위입니다.
+
 ## 백엔드에서 연결하는 방법
 
 `backend/services/llm.py` 가 이 서버를 자식 프로세스로 띄워 `langchain-mcp-adapters` 로 도구를 불러옵니다.
@@ -69,6 +74,34 @@ python ../실습/try_mcp_server.py   # 서버를 띄워 도구 목록과 호출 
 - CSV 모드: `31 passed, 4 skipped` (건너뛴 4개는 CSV↔DB 비교 — DB 주소가 있으면 실행됨)
 - DB 모드: `MESTORY_DATA_SOURCE=db` + 주소를 설정하면 `35 passed`
 - 데이터가 없으면 실패 대신 **건너뜀(skip)** 으로 표시됩니다.
+
+## MCP 클라이언트에 붙여서 확인 (MCP Inspector)
+
+도구가 실제로 불린다는 것을 확인한 기록입니다.
+
+```bash
+npx -y @modelcontextprotocol/inspector
+```
+
+브라우저가 열리면 전송 방식 `STDIO` / 명령 `python` / 인자 `-m mcp_server.server` / 작업 폴더 = 저장소 루트로 등록하고 **Connect** 하면 됩니다.
+아래는 CSV 모드에서 확인한 결과입니다.
+
+**1) 도구 3개가 등록되어 있다**
+
+![MCP Inspector 도구 목록](../docs/images/mcp-inspector-01-tools.png)
+
+**2) 정상 조회 — 2026-08-10, LINE-A**
+
+`record_count: 8`, `total_downtime_min: 147.6`. 계획 정지 1건(41.9분)이 총계에는 들어가되 조치 대상에서는 분리돼 나옵니다.
+
+![정지 로그 조회 결과](../docs/images/mcp-inspector-02-downtime.png)
+
+**3) 사전에 없는 코드 — 지어내지 않는다**
+
+`X-999` 는 `found: false` 와 함께 *"원인을 추정하지 말고 '판정 불가 — 현장 확인 필요'로 처리하세요"* 를 돌려줍니다.
+같은 호출의 `E-102` 는 뜻·표준 정지시간(10~30분)·기본 심각도를 정상적으로 돌려줍니다. **모르는 것과 아는 것이 한 화면에서 갈립니다.**
+
+![미등록 코드 조회 결과](../docs/images/mcp-inspector-03-unknown-code.png)
 
 ## 자주 나는 에러
 
