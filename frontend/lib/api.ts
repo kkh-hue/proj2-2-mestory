@@ -1,4 +1,5 @@
 import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
+import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
 
 export class ReportApiError extends Error {
@@ -89,6 +90,14 @@ export async function getReport(reportId: string): Promise<SavedReport> {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as SavedReport;
+}
+
+export async function listAlerts(): Promise<AlertItem[]> {
+  const response = await fetch(`${getBaseUrl()}/alerts`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as AlertItem[];
 }
 
 export async function listEquipment(): Promise<EquipmentSummaryItem[]> {

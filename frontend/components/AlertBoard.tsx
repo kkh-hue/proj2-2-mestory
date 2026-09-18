@@ -2,10 +2,16 @@
 
 import { useState } from "react";
 import AlertRow from "./AlertRow";
-import type { AlertItem, AlertTone } from "../lib/mockAlerts";
-import { alertTabs } from "../lib/mockAlerts";
+import type { AlertItem, AlertTone } from "../types/alert";
 
-type TabKey = (typeof alertTabs)[number]["key"];
+const TAB_DEFS = [
+  { key: "all", label: "전체" },
+  { key: "unread", label: "미확인" },
+  { key: "downtime", label: "다운타임" },
+  { key: "analysis", label: "분석 완료" },
+] as const;
+
+type TabKey = (typeof TAB_DEFS)[number]["key"];
 
 function matchesTab(alert: AlertItem, tab: TabKey) {
   if (tab === "all") return true;
@@ -22,14 +28,14 @@ export default function AlertBoard({ items }: { items: AlertItem[] }) {
   return (
     <>
       <div className="alert-tabs">
-        {alertTabs.map((tab) => (
+        {TAB_DEFS.map((tab) => (
           <button
             type="button"
             key={tab.key}
             className={`alert-tab${active === tab.key ? " active" : ""}`}
             onClick={() => setActive(tab.key)}
           >
-            {tab.label} <span className="alert-tab-count">{tab.count}</span>
+            {tab.label} <span className="alert-tab-count">{items.filter((item) => matchesTab(item, tab.key)).length}</span>
           </button>
         ))}
       </div>

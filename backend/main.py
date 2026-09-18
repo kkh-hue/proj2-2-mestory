@@ -15,7 +15,14 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from .db import get_report, init_db, list_chat_turns, list_equipment_status, list_reports
+from .db import (
+    get_report,
+    init_db,
+    list_alerts,
+    list_chat_turns,
+    list_equipment_status,
+    list_reports,
+)
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -205,6 +212,12 @@ async def get_report_detail(report_id: str) -> dict:
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report
+
+
+@app.get("/alerts")
+async def get_alerts(limit: int = 30) -> list[dict]:
+    """알림센터 화면용 — downtime_log·reports에서 파생시킨 알림 (backend/db.py 참고)."""
+    return await list_alerts(limit)
 
 
 @app.get("/equipment")
