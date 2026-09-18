@@ -1,45 +1,85 @@
-// 알림 — 디자인 목업 화면 (다른 화면과 같은 이유로 정적 값을 씀, lib/mockAlerts.ts 참고).
-// 실제 알림 저장/조회 엔드포인트가 아직 없어 실제 연동은 별도 작업 필요.
+// 알림센터 (F-07) — backend GET /alerts를 그대로 불러온다.
+// 전용 알림 테이블이 없어서 downtime_log·reports에서 파생시킨 값이다 (backend/db.py 참고).
+"use client";
+
+import { useEffect, useState } from "react";
 import AlertBoard from "../../components/AlertBoard";
 import Topbar from "../../components/Topbar";
 import { IconBell, IconCalendar, IconChevronRight } from "../../components/icons";
-import { alertList, alertSummary } from "../../lib/mockAlerts";
+import { listAlerts } from "../../lib/api";
+import type { AlertItem } from "../../types/alert";
+
+function isToday(iso: string) {
+  const date = new Date(iso);
+  const now = new Date();
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+}
 
 export default function AlertsPage() {
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    listAlerts()
+      .then(setAlerts)
+      .catch((cause) => setError(cause instanceof Error ? cause.message : "알림을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const unreadCount = alerts.filter((a) => a.unread).length;
+  const todayCount = alerts.filter((a) => isToday(a.date)).length;
+
   return (
     <main className="page">
       <Topbar title="알림센터" subtitle="중요한 설비 이벤트와 분석 상태를 알려드립니다." date="2026.09.18" />
 
-      <section className="alert-summary-row">
-        <article className="alert-summary-card alert-summary-critical">
-          <span className="alert-summary-icon">
-            <IconBell />
-          </span>
-          <div>
-            <span className="alert-summary-label">미확인</span>
-            <div className="alert-summary-value">
-              {alertSummary.unread}
-              <span className="alert-summary-unit">건</span>
-            </div>
-          </div>
-          <IconChevronRight className="alert-summary-chevron" />
-        </article>
-        <article className="alert-summary-card alert-summary-accent">
-          <span className="alert-summary-icon">
-            <IconCalendar />
-          </span>
-          <div>
-            <span className="alert-summary-label">오늘 알림</span>
-            <div className="alert-summary-value">
-              {alertSummary.today}
-              <span className="alert-summary-unit">건</span>
-            </div>
-          </div>
-          <IconChevronRight className="alert-summary-chevron" />
-        </article>
-      </section>
+      {loading && (
+        <section className="status-card status-loading" aria-live="polite">
+          <span className="spinner" /> 알림을 불러오는 중입니다.
+        </section>
+      )}
+      {!loading && error && (
+        <section className="status-card status-error" role="alert">
+          <strong>알림을 불러오지 못했습니다.</strong>
+          <span>{error}</span>
+        </section>
+      )}
 
-      <AlertBoard items={alertList} />
+      {!loading && !error && (
+        <>
+          <section className="alert-summary-row">
+            <article className="alert-summary-card alert-summary-critical">
+              <span className="alert-summary-icon">
+                <IconBell />
+              </span>
+              <div>
+                <span className="alert-summary-label">미확인</span>
+                <div className="alert-summary-value">
+                  {unreadCount}
+                  <span className="alert-summary-unit">건</span>
+                </div>
+              </div>
+              <IconChevronRight className="alert-summary-chevron" />
+            </article>
+            <article className="alert-summary-card alert-summary-accent">
+              <span className="alert-summary-icon">
+                <IconCalendar />
+              </span>
+              <div>
+                <span className="alert-summary-label">오늘 알림</span>
+                <div className="alert-summary-value">
+                  {todayCount}
+                  <span className="alert-summary-unit">건</span>
+                </div>
+              </div>
+              <IconChevronRight className="alert-summary-chevron" />
+            </article>
+          </section>
+
+          <AlertBoard items={alerts} />
+        </>
+      )}
     </main>
   );
 }

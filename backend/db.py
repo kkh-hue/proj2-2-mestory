@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from datetime import timezone
 from typing import Any
 
 import psycopg
@@ -241,3 +242,79 @@ async def get_report(report_id: str) -> dict | None:
         "confidence_note": row[7], "recommended_action": row[8],
         "visual_findings": row[9], "used_image": row[10], "created_at": row[11].isoformat(),
     }
+
+
+# ─────────────────────────────────────────────
+# 알림센터 화면 (F-07) — 알림 전용 테이블이 없어서, 실제로 있는 두 가지 사건에서
+# 만들어낸다: downtime_log(정지 발생/진행)와 reports(AI 분석 완료). "공유"·"읽음"
+# 같은 계정 기반 기능은 없어서 지어내지 않고, "24시간 이내 발생"을 미확인의
+# 대리 지표로 쓴다.
+# ─────────────────────────────────────────────
+async def list_alerts(limit: int = 30) -> list[dict]:
+    try:
+        async with await _connect() as conn:
+            downtime_cur = await conn.execute(
+                """
+                select d.log_id, d.equipment_id, d.line_id, d.error_code, d.start_time,
+                       (d.end_time is null) as is_open,
+                       (d.start_time >= now() - interval '1 day') as is_recent,
+                       e.equipment_type
+                from downtime_log d
+                left join equipment_master e on e.equipment_id = d.equipment_id
+                where d.end_time is null or d.start_time >= now() - interval '7 days'
+                order by d.start_time desc
+                limit %s
+                """,
+                (limit,),
+            )
+            downtime_rows = await downtime_cur.fetchall()
+
+            report_cur = await conn.execute(
+                """
+                select id, equipment_id, line_id, recommended_action, created_at,
+                       (created_at >= now() - interval '1 day') as is_recent
+                from reports order by created_at desc limit %s
+                """,
+                (limit,),
+            )
+            report_rows = await report_cur.fetchall()
+    except Exception as exc:
+        logger.warning("알림 목록 조회 실패: %s", exc)
+        return []
+
+    alerts: list[dict] = []
+    for log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent, equipment_type in downtime_rows:
+        cause_note = f"{error_code} 관련 " if error_code else ""
+        alerts.append({
+            "id": f"downtime-{log_id}",
+            "tone": "critical" if is_open else "warning",
+            "tag": "긴급" if is_open else "주의",
+            "title": f"{equipment_id} {equipment_type or ''} 정지 감지".strip(),
+            "description": f"{cause_note}다운타임이 {'진행 중입니다' if is_open else '있었습니다'}. 원인 분석이 필요합니다.",
+            "line_id": line_id,
+            "date": start_time,
+            "unread": bool(is_recent),
+        })
+    for report_id, equipment_id, line_id, recommended_action, created_at, is_recent in report_rows:
+        alerts.append({
+            "id": f"report-{report_id}",
+            "tone": "analysis",
+            "tag": "분석 완료",
+            "title": "AI 원인 분석 완료",
+            "description": f"{equipment_id}의 분석이 완료되었습니다. {recommended_action or ''}".strip(),
+            "line_id": line_id,
+            "date": created_at,
+            "unread": bool(is_recent),
+        })
+
+    # downtime_log.start_time은 timestamp(시간대 없음), reports.created_at은
+    # timestamptz(시간대 있음)라 그냥 정렬하면 "naive/aware 못 섞는다"는 TypeError가 난다.
+    # DB 세션 시간대가 UTC라고 보고 naive 쪽에 UTC를 붙여 맞춘다.
+    def _sort_key(alert: dict):
+        date = alert["date"]
+        return date.replace(tzinfo=timezone.utc) if date.tzinfo is None else date
+
+    alerts.sort(key=_sort_key, reverse=True)
+    for alert in alerts:
+        alert["date"] = alert["date"].isoformat()
+    return alerts[:limit]
