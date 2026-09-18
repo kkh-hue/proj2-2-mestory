@@ -4,7 +4,7 @@
 
 ## 🚀 배포 (Railway)
 
-- **프론트엔드**: https://mestory-app.up.railway.app — `/downtime`은 실제 `POST /report` 연동(강경희 님 구현), `/`(대시보드 홈)은 목업 데이터 화면(9/18 범위 추가, F-10 참고). `/reports`·`/equipment`·`/alerts`는 자리만 있음
+- **프론트엔드**: https://mestory-app.up.railway.app — `/downtime/report`가 실제 `POST /report` 연동(강경희 님 구현). `/`(대시보드 홈)·`/downtime`(다운타임 분석)은 목업 데이터 화면(9/18 범위 추가, F-10 참고). `/reports`·`/equipment`·`/alerts`는 자리만 있음
 - **백엔드 API**: https://mestory.up.railway.app
   - **헬스체크**: `GET /health` → `{"status":"ok"}`
   - **리포트 생성**: `POST /report`
@@ -121,12 +121,13 @@ mcp_server/                MCP 서버
 │   └── downtime.py           조건별 정지 기록 조회
 └── README.md                 진행상황
 
-frontend/                  Next.js — 대시보드 홈(F-10, 목업) + 다운타임 분석(F-07, 실연동)
-├── app/                     페이지 — /(대시보드) /downtime /reports /equipment /alerts
+frontend/                  Next.js — 대시보드 홈·다운타임 분석(F-10, 목업) + 분석 실행(F-07, 실연동)
+├── app/                     페이지 — /(대시보드) /downtime(목업) /downtime/report(실연동) /reports /equipment /alerts
 ├── components/              Sidebar / Topbar / KpiCard / TrendChart / AiSummaryCard / EventsTable
-│                            (대시보드) · ChatWindow / ChatInput / ReportCard / CauseList (다운타임 분석)
-├── lib/api.ts               backend 호출 단일 창구 (다운타임 분석에서 사용)
-├── lib/mockDashboard.ts     대시보드 홈용 정적 목업 데이터 — 집계 API 생기면 교체 대상
+│                            / CauseBreakdown / InsightPanel / FilterCard (목업) · ChatWindow / ChatInput /
+│                            ReportCard / CauseList / CauseDetailTable (분석 실행, 실연동)
+├── lib/api.ts               backend 호출 단일 창구 (/downtime/report에서 사용)
+├── lib/mockDashboard.ts, mockDowntimeAnalysis.ts   대시보드·다운타임 분석 목업 데이터 — 집계 API 생기면 교체 대상
 ├── types/report.ts          backend 출력 계약과 1:1 매칭되는 타입
 └── README.md                진행상황
 
