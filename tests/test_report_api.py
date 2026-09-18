@@ -93,6 +93,9 @@ def test_report_contract(api, payload):
         "causes": [{"error_code": "E-102", "description": "시험 원인", "severity": "보통",
                     "evidence": "시험 근거", "is_confirmed": False}],
         "unclassified_count": 0, "confidence_note": "시험 응답", "recommended_action": "확인 필요",
+        # 멀티모달로 늘어난 칸 2개 (docs/specs/multimodal.md).
+        # 이미지를 안 보낸 요청이므로 기본값 그대로 나와야 한다.
+        "visual_findings": None, "used_image": False,
     }
     generator.side_effect = None
     generator.return_value = module.DowntimeReport(**expected)
@@ -103,7 +106,7 @@ def test_report_contract(api, payload):
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
     generator.assert_awaited_once_with(**{
         field: payload.get(field)
-        for field in ("line_id", "equipment_id", "date_from", "date_to", "session_id")
+        for field in ("line_id", "equipment_id", "date_from", "date_to", "session_id", "images")
     })
 
 
