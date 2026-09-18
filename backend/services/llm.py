@@ -73,7 +73,9 @@ AGENT_MAX_ITERATIONS = 8  # 도구 호출 무한루프 방지용 상한
 class DowntimeCause(BaseModel):
     error_code: str = Field(description="원인으로 확정/추정한 에러코드")
     description: str = Field(description="원인에 대한 자연어 설명")
-    severity: Literal["경미", "보통", "중대"] = Field(description="심각도")
+    severity: Literal["경미", "보통", "중대", "판정 불가"] = Field(
+    description="심각도. 사전에 없는 코드·데이터 오류 등 근거가 없으면 '판정 불가'"
+    )
     evidence: str = Field(
         description="판단 근거 — 참고한 MCP 조회 결과(에러코드 사전/정비이력 등)를 구체적으로 명시"
     )
