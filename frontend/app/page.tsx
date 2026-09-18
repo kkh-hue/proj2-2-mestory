@@ -4,6 +4,7 @@
 import AiSummaryCard from "../components/AiSummaryCard";
 import EventsTable from "../components/EventsTable";
 import KpiCard from "../components/KpiCard";
+import NewAnalysisModal from "../components/NewAnalysisModal";
 import Topbar from "../components/Topbar";
 import TrendChart from "../components/TrendChart";
 import { aiSummary, kpiCards, needsReviewCount, recentEvents, trendSeries } from "../lib/mockDashboard";
@@ -11,7 +12,12 @@ import { aiSummary, kpiCards, needsReviewCount, recentEvents, trendSeries } from
 export default function DashboardPage() {
   return (
     <main className="page">
-      <Topbar title="다운타임 분석" subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다." date="2026.09.18" />
+      <Topbar
+        title="다운타임 분석"
+        subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다."
+        date="2026.09.18"
+        action={<NewAnalysisModal />}
+      />
 
       <section className="kpi-grid">
         {kpiCards.map((card) => (
