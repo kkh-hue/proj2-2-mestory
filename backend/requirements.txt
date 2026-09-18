@@ -3,7 +3,7 @@ uvicorn[standard]>=0.32
 pydantic>=2.9
 python-dotenv>=1.0
 openai>=1.60          # OpenRouter도 이 SDK로 부릅니다(base_url만 교체)
-langfuse>=4.0          # 필수 조건 4. 3.x부터 CallbackHandler가 langfuse.callback → langfuse.langchain으로
+langfuse>=2.50,<3         #CallbackHandler가 langfuse.callback → langfuse.langchain으로
                         # 옮겨지고 생성자 인자(session_id 등)도 바뀌었음 — 코드는 이 새 API 기준으로 작성돼 있음
 mcp>=1.29,<2           # 필수 조건 5 — FastMCP. mcp 2.x부터 FastMCP가 MCPServer로 이름이 바뀌고
                         # mcp.server.fastmcp가 없어져서, mcp_server/server.py(v1 API)가 깨진다
