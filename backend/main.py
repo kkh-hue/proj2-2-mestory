@@ -19,6 +19,7 @@ from .db import (
     get_dashboard_summary,
     get_report,
     init_db,
+    list_alerts,
     list_chat_turns,
     list_equipment_status,
     list_reports,
@@ -218,6 +219,12 @@ async def get_report_detail(report_id: str) -> dict:
 async def get_dashboard() -> dict:
     """대시보드 화면용 — KPI·추이·최근 이벤트·최근 리포트를 한 번에 (backend/db.py에서 집계)."""
     return await get_dashboard_summary()
+
+
+@app.get("/alerts")
+async def get_alerts(limit: int = 30) -> list[dict]:
+    """알림센터 화면용 — downtime_log·reports에서 파생시킨 알림 (backend/db.py 참고)."""
+    return await list_alerts(limit)
 
 
 @app.get("/equipment")
