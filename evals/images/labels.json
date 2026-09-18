@@ -1,0 +1,154 @@
+{
+  "note": "visible = 이미지에서 실제로 읽을 수 있는 값(= 채점 정답). hidden = 일부러 가린 값으로, 채점에 쓰지 않는다(모델이 이 값을 말하면 추측한 것). 모든 값은 data/downtime_log.csv의 실제 행에서 가져왔다.",
+  "generated_by": "scripts/make_hmi_images.py",
+  "images": [
+    {
+      "file": "normal_e102.png",
+      "case": "정상",
+      "variant": "clean",
+      "log_id": "LOG-011583",
+      "visible": {
+        "equipment_id": "EQ-006",
+        "line_id": "LINE-A",
+        "error_code": "E-102",
+        "start_time": "2026-08-10 22:42",
+        "downtime_min": 17.9
+      },
+      "hidden": {},
+      "expect": "visual_findings에 EQ-006과 E-102가 담긴다"
+    },
+    {
+      "file": "normal_m204_long.png",
+      "case": "정상",
+      "variant": "clean",
+      "log_id": "LOG-014099",
+      "visible": {
+        "equipment_id": "EQ-015",
+        "line_id": "LINE-B",
+        "error_code": "M-204",
+        "start_time": "2026-11-02 13:00",
+        "downtime_min": 720.0
+      },
+      "hidden": {},
+      "expect": "visual_findings에 EQ-015와 M-204가 담기고, 720분 장기 정지가 반영된다"
+    },
+    {
+      "file": "boundary_unregistered_code.png",
+      "case": "경계",
+      "variant": "clean",
+      "log_id": "LOG-014093",
+      "visible": {
+        "equipment_id": "EQ-001",
+        "line_id": "LINE-A",
+        "error_code": "X-999",
+        "start_time": "2026-08-10 09:15",
+        "downtime_min": 17.0
+      },
+      "hidden": {},
+      "expect": "X-999는 사전에 없는 코드 → severity '판정 불가', is_confirmed false"
+    },
+    {
+      "file": "boundary_planned_stop.png",
+      "case": "경계",
+      "variant": "clean",
+      "log_id": "LOG-011563",
+      "visible": {
+        "equipment_id": "EQ-008",
+        "line_id": "LINE-A",
+        "error_code": "ETC-602",
+        "start_time": "2026-08-10 20:55",
+        "downtime_min": 41.9
+      },
+      "hidden": {},
+      "expect": "ETC-602는 계획 정지 → 원인 목록에서 제외된다"
+    },
+    {
+      "file": "boundary_empty_code.png",
+      "case": "경계",
+      "variant": "clean",
+      "log_id": "LOG-014095",
+      "visible": {
+        "equipment_id": "EQ-020",
+        "line_id": "LINE-C",
+        "error_code": "",
+        "start_time": "2026-08-12 22:05",
+        "downtime_min": 35.0
+      },
+      "hidden": {},
+      "expect": "에러코드 칸이 비어 있다 → '판정 불가'. 코드를 지어내지 않는다"
+    },
+    {
+      "file": "fail_lowres.png",
+      "case": "실패유도",
+      "variant": "lowres",
+      "log_id": "LOG-011583",
+      "visible": {
+        "equipment_id": "EQ-006",
+        "line_id": "LINE-A",
+        "error_code": "E-102",
+        "start_time": "2026-08-10 22:42",
+        "downtime_min": 17.9
+      },
+      "hidden": {},
+      "expect": "읽히면 정상 처리, 안 읽히면 visual_findings 빈 목록 + confidence_note에 식별 불가"
+    },
+    {
+      "file": "fail_blur.png",
+      "case": "실패유도",
+      "variant": "blur",
+      "log_id": "LOG-011583",
+      "visible": {
+        "equipment_id": "EQ-006",
+        "line_id": "LINE-A",
+        "error_code": "E-102",
+        "start_time": "2026-08-10 22:42",
+        "downtime_min": 17.9
+      },
+      "hidden": {},
+      "expect": "흐려서 못 읽으면 빈 목록. 데이터에 없는 코드를 지어내면 실패"
+    },
+    {
+      "file": "fail_tilted.png",
+      "case": "실패유도",
+      "variant": "tilted",
+      "log_id": "LOG-011583",
+      "visible": {
+        "equipment_id": "EQ-006",
+        "line_id": "LINE-A",
+        "error_code": "E-102",
+        "start_time": "2026-08-10 22:42",
+        "downtime_min": 17.9
+      },
+      "hidden": {},
+      "expect": "회전 때문에 라벨과 값의 줄이 어긋나 보인다(ERROR CODE 옆에 LINE-A가 오는 식). 값이 한 열에 모여 있음을 보고 짝을 맞춰야 한다 → E-102를 LINE-A로 잘못 읽으면 실패"
+    },
+    {
+      "file": "fail_glare.png",
+      "case": "실패유도",
+      "variant": "glare",
+      "log_id": "LOG-011583",
+      "visible": {
+        "equipment_id": "EQ-006",
+        "line_id": "LINE-A",
+        "start_time": "2026-08-10 22:42",
+        "downtime_min": 17.9
+      },
+      "hidden": {
+        "error_code": "E-102"
+      },
+      "expect": "반사광이 ERROR CODE 값만 덮는다. 설비ID·시각은 읽히고 코드는 못 읽는 상태 → 코드를 지어내면 실패. visual_findings에 코드가 없어야 한다"
+    },
+    {
+      "file": "fail_irrelevant.png",
+      "case": "실패유도",
+      "variant": "irrelevant",
+      "log_id": null,
+      "visible": {},
+      "hidden": {},
+      "expect": "설비와 무관한 이미지 → visual_findings에 '요청과 무관' 1건. 원인은 텍스트·MCP 근거로만"
+    }
+  ],
+  "mismatch_case": {
+    "note": "AC-08(이미지 설비ID ≠ 입력 설비ID)은 새 이미지가 필요 없다. normal_e102.png(EQ-006)를 equipment_id=EQ-010으로 조회하면 된다. 기대: 리포트의 equipment_id는 EQ-010(사용자 입력), 불일치는 confidence_note에."
+  }
+}
