@@ -5,10 +5,12 @@ LLM 호출은 여기가 아니라 services/ 아래 한곳에 모으세요.
 """
 
 import logging
+import os
 import time
 import uuid
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .services.llm import DowntimeReport, generate_report, get_model_name
@@ -17,6 +19,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="MESTORY API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+        if origin.strip()
+    ],
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
+)
 
 
 @app.get("/health")
