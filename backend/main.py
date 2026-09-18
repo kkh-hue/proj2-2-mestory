@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from .db import get_report, init_db, list_chat_turns, list_reports
+from .db import get_report, init_db, list_chat_turns, list_equipment_status, list_reports
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -205,3 +205,9 @@ async def get_report_detail(report_id: str) -> dict:
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report
+
+
+@app.get("/equipment")
+async def get_equipment() -> list[dict]:
+    """설비관리 화면용 — 설비별 상태·가동률·마지막 점검일 (backend/db.py에서 집계)."""
+    return await list_equipment_status()

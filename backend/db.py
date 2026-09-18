@@ -241,3 +241,68 @@ async def get_report(report_id: str) -> dict | None:
         "confidence_note": row[7], "recommended_action": row[8],
         "visual_findings": row[9], "used_image": row[10], "created_at": row[11].isoformat(),
     }
+
+
+# ─────────────────────────────────────────────
+# 설비관리 화면 (F-07) — reports/chat_messages와는 다른 테이블을 읽는다.
+# equipment_master·downtime_log·maintenance_history는 scripts/seed_db.py가 만든
+# 시뮬레이션 데이터 테이블이라, MESTORY_DATA_SOURCE=db로 시딩된 환경에서만 값이 채워진다.
+# ─────────────────────────────────────────────
+_RECENT_WINDOW_MINUTES = 7 * 24 * 60  # "최근 7일" 가동률 계산용
+
+
+async def list_equipment_status() -> list[dict]:
+    """설비별 상태·가동률·마지막 점검일을 계산한다 (그대로 저장된 컬럼이 아니라 파생값).
+
+    - 상태: downtime_log에 아직 안 끝난(end_time is null) 기록이 있으면 "정지",
+      최근 7일 안에 다운타임이 한 번이라도 있었으면 "주의", 없으면 "정상".
+    - 가동률: 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
+      데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
+    """
+    try:
+        async with await _connect() as conn:
+            cur = await conn.execute(
+                """
+                select
+                    e.equipment_id, e.line_id, e.equipment_type,
+                    (select max(m."date") from maintenance_history m
+                     where m.equipment_id = e.equipment_id) as last_checked,
+                    exists(
+                        select 1 from downtime_log d
+                        where d.equipment_id = e.equipment_id and d.end_time is null
+                    ) as is_down,
+                    coalesce(sum(d2.downtime_min) filter (
+                        where d2.start_time >= now() - interval '7 days' and d2.downtime_min > 0
+                    ), 0) as recent_downtime_min,
+                    count(d2.log_id) filter (
+                        where d2.start_time >= now() - interval '7 days'
+                    ) as recent_downtime_count
+                from equipment_master e
+                left join downtime_log d2 on d2.equipment_id = e.equipment_id
+                group by e.equipment_id, e.line_id, e.equipment_type
+                order by e.equipment_id
+                """
+            )
+            rows = await cur.fetchall()
+    except Exception as exc:
+        logger.warning("설비 상태 조회 실패: %s", exc)
+        return []
+
+    result: list[dict] = []
+    for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min, recent_downtime_count in rows:
+        if is_down:
+            status = "정지"
+        elif recent_downtime_count and recent_downtime_count > 0:
+            status = "주의"
+        else:
+            status = "정상"
+        utilization_pct = max(0.0, min(100.0, 100.0 - (float(recent_downtime_min or 0) / _RECENT_WINDOW_MINUTES * 100)))
+        result.append({
+            "equipment_id": equipment_id,
+            "line_id": line_id,
+            "equipment_type": equipment_type,
+            "status": status,
+            "utilization_pct": round(utilization_pct, 1),
+            "last_checked": last_checked.isoformat() if last_checked else None,
+        })
+    return result

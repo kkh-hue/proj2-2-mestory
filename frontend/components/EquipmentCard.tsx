@@ -1,7 +1,8 @@
-import { IconChevronRight, IconCheck, IconConveyor, IconEye, IconFan, IconPanel, IconPump, IconRobotArm, IconStamp, IconStopCircle, IconTriangleWarning } from "./icons";
-import type { EquipmentItem } from "../lib/mockEquipment";
-
-const ICON = { stamp: IconStamp, robotArm: IconRobotArm, eye: IconEye, conveyor: IconConveyor, pump: IconPump, fan: IconFan, panel: IconPanel };
+import {
+  IconChevronRight, IconCheck, IconConveyor, IconEquipment, IconEye, IconFan,
+  IconPanel, IconPump, IconRobotArm, IconStamp, IconStopCircle, IconTriangleWarning,
+} from "./icons";
+import type { EquipmentSummaryItem } from "../types/equipment";
 
 const STATUS_TONE = {
   정상: { className: "status-tone-ok", Icon: IconCheck },
@@ -9,8 +10,24 @@ const STATUS_TONE = {
   정지: { className: "status-tone-stop", Icon: IconStopCircle },
 } as const;
 
-export default function EquipmentCard({ item }: { item: EquipmentItem }) {
-  const Icon = ICON[item.icon];
+// equipment_type은 DB 문구라 정해진 값 집합이 아니다 — 아는 낱말이 보이면 그에 맞는
+// 아이콘을 쓰고, 못 알아보면 일반 설비 아이콘으로 무난하게 떨어진다.
+const TYPE_ICON: { match: RegExp; Icon: typeof IconEquipment }[] = [
+  { match: /프레스|스탬프/, Icon: IconStamp },
+  { match: /로봇/, Icon: IconRobotArm },
+  { match: /검사|비전|카메라/, Icon: IconEye },
+  { match: /컨베이어/, Icon: IconConveyor },
+  { match: /펌프/, Icon: IconPump },
+  { match: /압축기|팬|송풍/, Icon: IconFan },
+  { match: /판넬|패널|제어/, Icon: IconPanel },
+];
+
+function iconForType(equipmentType: string) {
+  return TYPE_ICON.find(({ match }) => match.test(equipmentType))?.Icon ?? IconEquipment;
+}
+
+export default function EquipmentCard({ item }: { item: EquipmentSummaryItem }) {
+  const Icon = iconForType(item.equipment_type);
   const { className, Icon: StatusIcon } = STATUS_TONE[item.status];
 
   return (
@@ -19,28 +36,28 @@ export default function EquipmentCard({ item }: { item: EquipmentItem }) {
         <span className="equipment-icon">
           <Icon />
         </span>
-        <span className="equipment-id">{item.id}</span>
+        <span className="equipment-id">{item.equipment_id}</span>
         <span className="status-badge-pill">
           <StatusIcon /> {item.status}
         </span>
         <IconChevronRight className="events-row-chevron" />
       </div>
-      <h4 className="equipment-name">{item.name}</h4>
+      <h4 className="equipment-name">{item.equipment_type}</h4>
       <span className="equipment-line">
-        <span className="equipment-line-dot" /> {item.line}
+        <span className="equipment-line-dot" /> {item.line_id}
       </span>
       <div className="equipment-stats">
         <div>
-          <span className="equipment-stats-label">가동률</span>
-          <div className="equipment-utilization">{item.utilization.toFixed(1)}%</div>
+          <span className="equipment-stats-label">최근 7일 가동률</span>
+          <div className="equipment-utilization">{item.utilization_pct.toFixed(1)}%</div>
         </div>
         <div>
           <span className="equipment-stats-label">마지막 점검일</span>
-          <div className="equipment-checked">{item.lastChecked}</div>
+          <div className="equipment-checked">{item.last_checked ?? "기록 없음"}</div>
         </div>
       </div>
       <span className="breakdown-meter-track">
-        <span className="breakdown-meter-fill" style={{ width: `${item.utilization}%` }} />
+        <span className="breakdown-meter-fill" style={{ width: `${item.utilization_pct}%` }} />
       </span>
     </article>
   );
