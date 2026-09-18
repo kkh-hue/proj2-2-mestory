@@ -1,41 +1,44 @@
-"use client";
+// 대시보드 (F-07 확장). 담당: 강경희
+// 요약 통계/추이/최근 이벤트는 백엔드 집계 엔드포인트가 아직 없어 mockDashboard.ts의 정적 값을 씁니다.
+// 실제 리포트 생성(POST /report)은 "다운타임 분석" 탭(/downtime)에서 동작합니다.
+import AiSummaryCard from "../components/AiSummaryCard";
+import EventsTable from "../components/EventsTable";
+import KpiCard from "../components/KpiCard";
+import Topbar from "../components/Topbar";
+import TrendChart from "../components/TrendChart";
+import { aiSummary, kpiCards, needsReviewCount, recentEvents, trendSeries } from "../lib/mockDashboard";
 
-import { useState } from "react";
-import ChatInput from "../components/ChatInput";
-import ChatWindow from "../components/ChatWindow";
-import { createReport } from "../lib/api";
-import type { DowntimeReport, ReportRequest } from "../types/report";
-
-function makeSessionId() { return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`; }
-
-export default function Home() {
-  const [sessionId] = useState(makeSessionId);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<DowntimeReport | null>(null);
-  const [request, setRequest] = useState<Omit<ReportRequest, "session_id">>({
-    date_from: null, date_to: null, line_id: null, equipment_id: null,
-  });
-
-  async function handleSubmit(request: Omit<ReportRequest, "session_id">) {
-    setRequest(request);
-    setLoading(true); setError(""); setResult(null);
-    try { setResult(await createReport({ ...request, session_id: sessionId })); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다."); }
-    finally { setLoading(false); }
-  }
-
-  function startNewAnalysis() {
-    setRequest({ date_from: null, date_to: null, line_id: null, equipment_id: null });
-    setResult(null);
-    setError("");
-    setLoading(false);
-  }
-
+export default function DashboardPage() {
   return (
-    <main className={`app-shell ${result ? "result-mode" : ""}`}>
-      <header className="hero"><div className="brand-mark">M</div><div><div className="eyebrow">MANUFACTURING INTELLIGENCE</div><h1>MESTORY</h1><p>설비 다운타임 원인 분석 리포트</p></div></header>
-      {loading || result || error ? <div className="screen-panel"><ChatWindow loading={loading} error={error} result={result} onNewAnalysis={startNewAnalysis} onRetry={() => handleSubmit(request)} /></div> : <div className="input-screen"><ChatInput loading={loading} initialRequest={request} onSubmit={handleSubmit} /></div>}
+    <main className="page">
+      <Topbar title="다운타임 분석" subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다." date="2026.09.18" />
+
+      <section className="kpi-grid">
+        {kpiCards.map((card) => (
+          <KpiCard key={card.label} {...card} />
+        ))}
+      </section>
+
+      <section className="dashboard-grid">
+        <div className="trend-card">
+          <div className="trend-card-head">
+            <h3>라인별 다운타임 추이</h3>
+            <ul className="trend-legend">
+              {trendSeries.lines.map((line) => (
+                <li key={line.key}>
+                  <span className="trend-legend-dot" style={{ background: line.color }} />
+                  {line.key}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <TrendChart labels={trendSeries.labels} lines={trendSeries.lines} maxY={trendSeries.maxY} />
+        </div>
+
+        <AiSummaryCard summary={aiSummary} />
+      </section>
+
+      <EventsTable rows={recentEvents} needsReviewCount={needsReviewCount} />
     </main>
   );
 }

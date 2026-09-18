@@ -1,6 +1,7 @@
 // 전체 페이지 레이아웃 (F-07). 담당: 강경희
-// 지금은 배포 파이프라인 확인용 최소 플레이스홀더 — 실제 레이아웃/스타일은 강경희 님이 교체
+// 사이드바(대시보드/다운타임 분석/리포트/설비 관리/알림) + 각 페이지 콘텐츠 구조
 import type { ReactNode } from "react";
+import AppShell from "../components/AppShell";
 import "./globals.css";
 
 export const metadata = { title: "MESTORY" };
@@ -8,7 +9,9 @@ export const metadata = { title: "MESTORY" };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ko">
-      <body>{children}</body>
+      <body>
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }
