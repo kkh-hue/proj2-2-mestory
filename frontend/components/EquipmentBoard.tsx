@@ -3,7 +3,7 @@
 import { useState } from "react";
 import EquipmentCard from "./EquipmentCard";
 import { IconDashboard } from "./icons";
-import type { EquipmentItem, EquipmentStatus } from "../lib/mockEquipment";
+import type { EquipmentStatus, EquipmentSummaryItem } from "../types/equipment";
 
 const FILTERS: { label: string; status: EquipmentStatus | "all"; dotClassName: string | null }[] = [
   { label: "전체", status: "all", dotClassName: null },
@@ -12,9 +12,13 @@ const FILTERS: { label: string; status: EquipmentStatus | "all"; dotClassName: s
   { label: "정지", status: "정지", dotClassName: "filter-dot-stop" },
 ];
 
-export default function EquipmentBoard({ items }: { items: EquipmentItem[] }) {
+export default function EquipmentBoard({ items }: { items: EquipmentSummaryItem[] }) {
   const [active, setActive] = useState<EquipmentStatus | "all">("all");
   const visible = active === "all" ? items : items.filter((item) => item.status === active);
+
+  if (items.length === 0) {
+    return <p className="no-causes">등록된 설비가 없습니다.</p>;
+  }
 
   return (
     <>
@@ -34,7 +38,7 @@ export default function EquipmentBoard({ items }: { items: EquipmentItem[] }) {
 
       <div className="equipment-grid">
         {visible.map((item) => (
-          <EquipmentCard item={item} key={item.id} />
+          <EquipmentCard item={item} key={item.equipment_id} />
         ))}
       </div>
     </>
