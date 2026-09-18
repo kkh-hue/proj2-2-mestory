@@ -245,6 +245,167 @@ async def get_report(report_id: str) -> dict | None:
 
 
 # ─────────────────────────────────────────────
+# 대시보드 화면 (F-07) — KPI·추이·최근 이벤트를 한 번에 집계한다.
+# equipment_master·downtime_log는 scripts/seed_db.py가 만든 시뮬레이션 테이블.
+# ─────────────────────────────────────────────
+def _delta(today: float, yesterday: float) -> dict:
+    """"전일 대비" 배지 하나를 만든다. 어제 값이 0이면 방향을 판단할 기준이 없어 0%로 둔다."""
+    if yesterday == 0:
+        return {"direction": "up", "percent": 0.0}
+    change = (today - yesterday) / yesterday * 100
+    return {"direction": "up" if change >= 0 else "down", "percent": round(abs(change), 1)}
+
+
+async def get_dashboard_summary() -> dict:
+    try:
+        async with await _connect() as conn:
+            kpi_cur = await conn.execute(
+                """
+                select
+                    coalesce(sum(downtime_min) filter (where start_time >= current_date and downtime_min > 0), 0),
+                    coalesce(sum(downtime_min) filter (
+                        where start_time >= current_date - 1 and start_time < current_date and downtime_min > 0
+                    ), 0),
+                    coalesce(avg(downtime_min) filter (
+                        where start_time >= current_date and end_time is not null and downtime_min > 0
+                    ), 0),
+                    coalesce(avg(downtime_min) filter (
+                        where start_time >= current_date - 1 and start_time < current_date
+                        and end_time is not null and downtime_min > 0
+                    ), 0)
+                from downtime_log
+                """
+            )
+            today_downtime, yesterday_downtime, today_avg_recovery, yesterday_avg_recovery = await kpi_cur.fetchone()
+
+            equipment_count_row = await (await conn.execute("select count(*) from equipment_master")).fetchone()
+            equipment_count = equipment_count_row[0] if equipment_count_row else 0
+
+            reports_cur = await conn.execute(
+                """
+                select
+                    count(*) filter (where created_at >= current_date),
+                    count(*) filter (where created_at >= current_date - 1 and created_at < current_date)
+                from reports
+                """
+            )
+            today_reports, yesterday_reports = await reports_cur.fetchone()
+
+            trend_cur = await conn.execute(
+                """
+                select date_trunc('day', start_time)::date as day, line_id,
+                       coalesce(sum(downtime_min) filter (where downtime_min > 0), 0) as total_min
+                from downtime_log
+                where start_time >= current_date - interval '6 days'
+                group by day, line_id
+                order by day
+                """
+            )
+            trend_rows = await trend_cur.fetchall()
+
+            events_cur = await conn.execute(
+                """
+                select d.log_id, d.equipment_id, e.equipment_type, d.line_id, d.start_time, d.end_time,
+                       d.downtime_min, r.causes, r.recommended_action
+                from downtime_log d
+                left join equipment_master e on e.equipment_id = d.equipment_id
+                left join lateral (
+                    select causes, recommended_action from reports rr
+                    where rr.equipment_id = d.equipment_id
+                    order by rr.created_at desc limit 1
+                ) r on true
+                order by d.start_time desc
+                limit 10
+                """
+            )
+            event_rows = await events_cur.fetchall()
+
+            latest_report_cur = await conn.execute(
+                "select id, equipment_id, line_id, period, causes, unclassified_count, "
+                "       confidence_note, recommended_action, visual_findings, used_image, created_at "
+                "from reports order by created_at desc limit 1"
+            )
+            latest_report_row = await latest_report_cur.fetchone()
+    except Exception as exc:
+        logger.warning("대시보드 집계 실패: %s", exc)
+        return {
+            "kpi": {"today_downtime_min": 0, "avg_recovery_min": 0, "reports_today": 0, "equipment_count": 0,
+                    "utilization_pct": 100.0, "downtime_delta": _delta(0, 0), "recovery_delta": _delta(0, 0),
+                    "reports_delta": _delta(0, 0), "utilization_delta": _delta(0, 0)},
+            "trend": {"labels": [], "lines": []},
+            "recent_events": [],
+            "latest_report": None,
+        }
+
+    # 라인별 일별 다운타임을 "라벨(날짜) × 라인" 표로 펼친다 — 값 없는 칸은 0.
+    days = sorted({row[0] for row in trend_rows})
+    line_ids = sorted({row[1] for row in trend_rows})
+    by_day_line = {(row[0], row[1]): float(row[2]) for row in trend_rows}
+    trend = {
+        "labels": [d.isoformat() for d in days],
+        "lines": [
+            {"key": line_id, "values": [round(by_day_line.get((d, line_id), 0.0) / 60, 2) for d in days]}
+            for line_id in line_ids
+        ],
+    }
+
+    recent_events = []
+    for log_id, equipment_id, equipment_type, line_id, start_time, end_time, downtime_min, causes, recommended_action in event_rows:
+        top_cause = causes[0] if causes else None
+        recent_events.append({
+            "log_id": log_id,
+            "equipment_id": equipment_id,
+            "equipment_type": equipment_type,
+            "line_id": line_id,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat() if end_time else None,
+            "downtime_min": float(downtime_min) if downtime_min is not None else None,
+            "status": "복구 완료" if end_time is not None else "진행 중",
+            # 다운타임과 리포트를 정확한 기간으로 맞춰 잇지 않고, 같은 설비의 가장 최근
+            # 리포트를 참고용으로만 붙인다 — 정확히 이 사건의 원인이라는 보장은 없다.
+            "severity": top_cause["severity"] if top_cause else "판정 불가",
+            "cause": top_cause["description"] if top_cause else (recommended_action or "아직 분석되지 않음"),
+        })
+
+    latest_report = None
+    if latest_report_row:
+        latest_report = {
+            "id": latest_report_row[0], "equipment_id": latest_report_row[1], "line_id": latest_report_row[2],
+            "period": latest_report_row[3], "causes": latest_report_row[4],
+            "unclassified_count": latest_report_row[5], "confidence_note": latest_report_row[6],
+            "recommended_action": latest_report_row[7], "visual_findings": latest_report_row[8],
+            "used_image": latest_report_row[9], "created_at": latest_report_row[10].isoformat(),
+        }
+
+    # 가동률 = 100% - (오늘 다운타임이 "설비 수 × 24시간" 중 차지한 비율).
+    # equipment_count가 0이면(마스터 데이터 없음) 나눗셈을 할 수 없어 100%로 둔다.
+    def _utilization(downtime_min: float) -> float:
+        if equipment_count == 0:
+            return 100.0
+        return max(0.0, min(100.0, 100.0 - (downtime_min / (equipment_count * 24 * 60) * 100)))
+
+    today_utilization = _utilization(float(today_downtime))
+    yesterday_utilization = _utilization(float(yesterday_downtime))
+
+    return {
+        "kpi": {
+            "today_downtime_min": float(today_downtime),
+            "avg_recovery_min": round(float(today_avg_recovery), 1),
+            "reports_today": today_reports,
+            "equipment_count": equipment_count,
+            "utilization_pct": round(today_utilization, 1),
+            "downtime_delta": _delta(float(today_downtime), float(yesterday_downtime)),
+            "recovery_delta": _delta(float(today_avg_recovery), float(yesterday_avg_recovery)),
+            "reports_delta": _delta(float(today_reports), float(yesterday_reports)),
+            "utilization_delta": _delta(today_utilization, yesterday_utilization),
+        },
+        "trend": trend,
+        "recent_events": recent_events,
+        "latest_report": latest_report,
+    }
+
+
+# ─────────────────────────────────────────────
 # 알림센터 화면 (F-07) — 알림 전용 테이블이 없어서, 실제로 있는 두 가지 사건에서
 # 만들어낸다: downtime_log(정지 발생/진행)와 reports(AI 분석 완료). "공유"·"읽음"
 # 같은 계정 기반 기능은 없어서 지어내지 않고, "24시간 이내 발생"을 미확인의

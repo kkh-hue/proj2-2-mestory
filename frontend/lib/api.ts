@@ -1,4 +1,5 @@
 import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
+import type { DashboardSummary } from "../types/dashboard";
 import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
 
@@ -90,6 +91,14 @@ export async function getReport(reportId: string): Promise<SavedReport> {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as SavedReport;
+}
+
+export async function getDashboard(): Promise<DashboardSummary> {
+  const response = await fetch(`${getBaseUrl()}/dashboard`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as DashboardSummary;
 }
 
 export async function listAlerts(): Promise<AlertItem[]> {
