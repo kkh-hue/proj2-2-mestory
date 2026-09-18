@@ -19,6 +19,7 @@ dist/
 build/
 .next/
 .turbo/
+*.tsbuildinfo
 
 # OS / IDE
 .DS_Store
