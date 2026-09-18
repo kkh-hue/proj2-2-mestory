@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { IconSparkle } from "./icons";
 import type { aiSummary as AiSummaryType } from "../lib/mockDashboard";
 
@@ -6,9 +7,9 @@ export default function AiSummaryCard({ summary }: { summary: typeof AiSummaryTy
     <section className="ai-summary-card">
       <div className="ai-summary-head">
         <h3>AI 원인 분석 요약</h3>
-        <div className="ai-badge" aria-hidden="true">
+        <Link href="/downtime/ai" className="ai-badge" aria-label="AI 원인 분석 대화형 화면 열기">
           <IconSparkle />
-        </div>
+        </Link>
       </div>
 
       <div className="ai-primary-cause">
