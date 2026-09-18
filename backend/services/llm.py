@@ -19,9 +19,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -66,6 +67,12 @@ FALLBACK_MESSAGE = "자동 분석 실패 — 원본 로그 확인 필요"
 
 AGENT_MAX_ITERATIONS = 8  # 도구 호출 무한루프 방지용 상한
 
+# 이미지는 "data:image/png;base64,iVBOR..." 같은 data URL 한 줄로 들어온다.
+# 이 정규식은 앞머리(data:image/png;base64,)와 뒤의 긴 base64 덩어리를 따로 잡는다.
+# 왜 필요한가: 그 덩어리가 Langfuse 트레이스나 대화 기록에 그대로 들어가면
+#   ① 트레이스를 사람이 읽을 수 없고 ② 다음 요청마다 통째로 다시 전송돼 비용이 튄다.
+_BASE64_IMAGE_RE = re.compile(r"(data:image/[A-Za-z0-9.+\-]+;base64,)[A-Za-z0-9+/=\s]{40,}")
+
 
 # ─────────────────────────────────────────────
 # 출력 계약 (PRD 5-2, 필수 조건 3)
@@ -90,6 +97,21 @@ class DowntimeReport(BaseModel):
     unclassified_count: int = Field(ge=0, description="미등록 코드·데이터 오류 등 판정 불가 건수")
     confidence_note: str = Field(description="경계 케이스/불확실성, 사람 확인 필요 여부 명시")
     recommended_action: str = Field(description="표준 권장 조치 문구 (정비팀/자재팀 등 담당 구분 포함)")
+    # ── 멀티모달 (docs/specs/multimodal.md) ──
+    # 이미지에서 "읽어낸 사실"만 여기에 적는다. 추론·판정은 causes로 간다.
+    # 이 칸을 따로 둔 이유: 이미지 근거가 evidence 문장 속에 녹아버리면
+    # "이미지가 실제로 쓰였는가"를 채점할 수 없다. 분리해 두면 추출 정확도를 측정할 수 있다.
+    visual_findings: list[str] | None = Field(
+        default=None,
+        description=(
+            "첨부 이미지에서 읽어낸 사실 목록. 예: "
+            '["화면에 에러코드 M-204 표시됨", "설비 태그 EQ-001 확인", "타임스탬프 2026-08-10 22:14:03"]. '
+            "읽을 수 없으면 빈 목록. 이미지에 없는 내용을 추측해서 채우지 마라. 이미지가 없으면 null."
+        ),
+    )
+    # 이 값은 LLM 출력을 믿지 않고 코드가 덮어쓴다 (아래 generate_report 끝부분).
+    # 이유: equipment_id/line_id와 같은 원칙 — "사실로 정해진 것은 코드가 정한다".
+    used_image: bool = Field(default=False, description="이미지를 근거로 사용했으면 true")
 
 
 class _SimplifiedReport(BaseModel):
@@ -148,11 +170,86 @@ def _build_llm() -> ChatOpenAI:
     )
 
 
+def _shorten_data_urls(text: str) -> str:
+    """문자열 안의 이미지 base64 덩어리를 길이 표시로 바꾼다.
+    예: "data:image/png;base64,iVBORw0KGgo..." → "data:image/png;base64,<39264자 생략>"
+    """
+    def _replace(match: re.Match) -> str:
+        head = match.group(1)
+        omitted = len(match.group(0)) - len(head)
+        return f"{head}<{omitted}자 생략>"
+
+    return _BASE64_IMAGE_RE.sub(_replace, text)
+
+
+def _mask_base64(*, data: Any) -> Any:
+    """Langfuse가 트레이스를 보내기 직전에 부르는 '가리개' 함수.
+
+    Langfuse는 span의 input/output/metadata마다 이 함수를 통과시킨다
+    (langfuse/_client/span.py에서 `_mask(data=data)` 형태로 호출).
+    입력이 문자열 하나가 아니라 메시지 목록 안에 중첩된 dict일 수 있으므로
+    목록·사전을 재귀로 훑어 내려간다. 키워드 인자 이름(data)은 Langfuse가 정한 것이다.
+    """
+    if isinstance(data, str):
+        return _shorten_data_urls(data)
+    if isinstance(data, dict):
+        return {key: _mask_base64(data=value) for key, value in data.items()}
+    if isinstance(data, (list, tuple)):
+        return [_mask_base64(data=value) for value in data]
+    return data
+
+
+_langfuse_mask_ready = False
+
+
+def _ensure_langfuse_mask() -> None:
+    """Langfuse에 가리개 함수를 딱 한 번 달고, **정말 달렸는지 확인한다.**
+
+    왜 확인까지 하는가 (여기서 한 번 데였다):
+      CallbackHandler는 내부에서 `get_client()`로 '기본 클라이언트'를 찾아 쓴다.
+      그런데 Langfuse의 설정 저장소(LangfuseResourceManager)는 공개키당 하나뿐인
+      싱글턴이라, **이미 만들어져 있으면 `Langfuse(mask=...)`의 mask가 조용히 무시된다.**
+      즉 다른 코드가 우리보다 먼저 클라이언트를 만들면 마스킹이 안 걸리는데
+      에러도 경고도 안 난다 — requirements.txt 주석이 경계한 "조용히 꺼짐"과 같은 종류다.
+
+    그래서 ① 정상 경로로 달아보고 ② 확인하고 ③ 안 달렸으면 저장소에 직접 꽂고
+    ④ 그래도 안 되면 경고를 남긴다. 경고가 보이면 트레이스에 base64가 남는다는 뜻이다.
+    """
+    global _langfuse_mask_ready
+    if _langfuse_mask_ready:
+        return
+    _langfuse_mask_ready = True  # 실패해도 매 요청마다 재시도하지 않는다
+    try:
+        from langfuse import Langfuse, get_client
+
+        # ① 정상 경로 — 아직 클라이언트가 없으면 이것만으로 끝난다
+        Langfuse(mask=_mask_base64)
+
+        # ② 확인 (get_client()는 매번 새 껍데기를 주지만 설정 저장소는 공유한다)
+        if getattr(get_client(), "_mask", None) is not _mask_base64:
+            # ③ 이미 다른 클라이언트가 있었던 경우 — 설정 저장소에 직접 꽂는다
+            resources = getattr(get_client(), "_resources", None)
+            if resources is not None:
+                resources.mask = _mask_base64
+
+        # ④ 최종 확인
+        if getattr(get_client(), "_mask", None) is not _mask_base64:
+            logger.warning(
+                "Langfuse mask가 적용되지 않았습니다 — 트레이스에 이미지 base64가 그대로 남습니다. "
+                "다른 코드가 먼저 Langfuse 클라이언트를 만들었거나 langfuse 내부 구조가 바뀐 경우입니다."
+            )
+    except Exception as exc:  # 키가 없거나 버전이 다를 때도 서비스는 돌아야 한다
+        logger.warning(
+            "Langfuse mask 설정 실패 — 트레이스에 이미지 base64가 그대로 남을 수 있습니다: %s", exc
+        )
+
+
 def _build_run_config(session_id: str | None, line_id: str | None, equipment_id: str | None) -> dict:
     """AgentExecutor.ainvoke(config=...)에 넘길 값. Langfuse 콜백은 이제 생성자가 아니라
     invoke config의 metadata(langfuse_* 키)로 session_id/trace_name을 받는다."""
     if LangfuseCallbackHandler is None or not os.getenv("LANGFUSE_PUBLIC_KEY"):
         return {}
+    _ensure_langfuse_mask()  # 핸들러를 만들기 전에 가리개를 먼저 달아 둔다
     metadata = {
         "langfuse_trace_name": "downtime_report",
         "line_id": line_id,
@@ -170,6 +267,48 @@ def _escape_braces(text: str) -> str:
     return text.replace("{", "{{").replace("}", "}}")
 
 
+def _build_user_messages(
+    *,
+    period: str,
+    line_label: str,
+    equipment_label: str,
+    images: list[str] | None,
+) -> tuple[list[BaseMessage], str]:
+    """에이전트에 넘길 human 메시지와, 대화 기록에 남길 '텍스트만' 버전을 함께 만든다.
+
+    반환값을 둘로 나눈 이유가 이 함수의 핵심이다:
+      - 프롬프트(첫 번째 반환값)에는 이미지가 들어가야 한다.
+      - 대화 기록(두 번째 반환값)에는 이미지가 절대 들어가면 안 된다.
+        들어가면 같은 session_id로 다음 요청을 할 때 base64가 통째로 다시 전송돼
+        비용·지연이 요청마다 누적된다.
+
+    이미지가 없으면 content를 '문자열'로 둔다 = 기존과 완전히 같은 경로(회귀 없음).
+    이미지가 있으면 content를 '리스트'로 만든다 (text 조각 + image_url 조각들).
+    """
+    text = (
+        "아래 조건에 해당하는 정지 기록을 MCP 도구로 조회하고, 원인 분석 리포트를 생성해줘.\n"
+        f"- 기간: {period}\n- 라인: {line_label}\n- 설비: {equipment_label}"
+    )
+
+    if not images:
+        # 이미지가 없을 때의 프롬프트는 기존과 한 글자도 다르지 않다.
+        return [HumanMessage(content=text)], text
+
+    text += (
+        f"\n\n첨부 이미지 {len(images)}장도 함께 참고해라.\n"
+        "- 이미지에서 읽어낸 사실(에러코드·설비ID·시각·화면 문구·눈에 보이는 손상 등)은"
+        " visual_findings에 한 줄씩 적어라.\n"
+        "- 이미지에 없는 내용을 추측해서 채우지 마라. 못 읽으면 빈 목록으로 둔다.\n"
+        "- 이미지의 설비ID가 위 조건과 다르면 위 조건을 따르고, 불일치를 confidence_note에 적어라."
+    )
+
+    content: list[Any] = [{"type": "text", "text": text}]
+    for data_url in images:
+        content.append({"type": "image_url", "image_url": {"url": data_url}})
+
+    return [HumanMessage(content=content)], text
+
+
 def _build_prompt(schema_json: str, extra_instruction: str = "") -> ChatPromptTemplate:
     system = (
         "너는 제조 현장 설비 다운타임 원인 분석 에이전트다.\n\n"
@@ -185,7 +324,12 @@ def _build_prompt(schema_json: str, extra_instruction: str = "") -> ChatPromptTe
         [
             ("system", system),
             MessagesPlaceholder("chat_history", optional=True),
-            ("human", "{input}"),
+            # ⚠️ 여기를 ("human", "{input}") 으로 되돌리면 이미지가 조용히 사라진다.
+            #    ("human", "...") 은 문자열 f-string 템플릿이라, {input} 자리에 리스트를 넣으면
+            #    리스트가 str()로 변환돼 "[{'type': 'text', ...}]" 같은 '글자'가 된다.
+            #    에러가 안 나기 때문에 눈치채기 어렵다 (tests/test_multimodal.py AC-02가 이걸 잡는다).
+            #    MessagesPlaceholder는 메시지 객체를 그대로 통과시켜 content가 리스트로 유지된다.
+            MessagesPlaceholder("input"),
             MessagesPlaceholder("agent_scratchpad"),
         ]
     )
@@ -208,7 +352,7 @@ async def _run_agent_json(
     tools: list,
     llm: ChatOpenAI,
     schema_json: str,
-    user_input: str,
+    user_messages: list[BaseMessage],
     chat_history: list[BaseMessage],
     run_config: dict,
     extra_instruction: str = "",
@@ -223,8 +367,9 @@ async def _run_agent_json(
     )
 #   LLM 호출 지점 — OpenRouter의 OpenAI 호환 API를 LangChain ChatOpenAI 로 호출한다.
 # (에이전트가 MCP 도구를 고르고, 최종 응답을 여기서 받는다)
+    # input은 이제 문자열이 아니라 메시지 목록이다 (이미지를 담을 수 있게).
     result = await executor.ainvoke(
-        {"input": user_input, "chat_history": chat_history},
+        {"input": user_messages, "chat_history": chat_history},
         config=run_config,
     )
     return _extract_json(result["output"])
@@ -246,7 +391,7 @@ async def _generate_with_retries(
     tools: list,
     llm: ChatOpenAI,
     run_config: dict,
-    user_input: str,
+    user_messages: list[BaseMessage],
     chat_history: list[BaseMessage],
     equipment_label: str,
     line_label: str,
@@ -258,7 +403,7 @@ async def _generate_with_retries(
 
     # ── 1차 시도 ──
     try:
-        data = await _run_agent_json(tools, llm, full_schema, user_input, chat_history, run_config)
+        data = await _run_agent_json(tools, llm, full_schema, user_messages, chat_history, run_config)
         return DowntimeReport.model_validate(data)
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
         logger.warning("1차 리포트 생성 실패, 프롬프트 재시도: %s", exc)
@@ -269,7 +414,7 @@ async def _generate_with_retries(
             tools,
             llm,
             full_schema,
-            user_input,
+            user_messages,
             chat_history,
             run_config,
             extra_instruction=(
@@ -287,7 +432,7 @@ async def _generate_with_retries(
             tools,
             llm,
             simplified_schema,
-            user_input,
+            user_messages,
             chat_history,
             run_config,
             extra_instruction="구조가 복잡해 계속 실패했을 수 있다. 더 단순한 스키마로 다시 응답해라.",
@@ -316,19 +461,29 @@ async def generate_report(
     date_from: str | None = None,
     date_to: str | None = None,
     session_id: str | None = None,
+    images: list[str] | None = None,
 ) -> DowntimeReport:
     """조건에 맞는 정지 기록을 MCP 도구로 조회해 원인 분석 리포트를 생성한다.
 
     session_id를 주면 같은 세션의 이전 대화를 프롬프트에 같이 넣어 후속 질문에
     맥락을 유지한다 (F-07, docs/MESTORY_기능목록.md 참고).
+
+    images: 이미지 data URL 목록 (예: "data:image/png;base64,..."). 주면 LLM이
+        텍스트 조건·MCP 조회 결과와 함께 이미지도 근거로 본다 (docs/specs/multimodal.md).
+        형식·용량 검증은 라우터(backend/main.py)에서 끝내고 오므로 여기서는 담기만 한다.
     """
     period = f"{date_from or '전체'} ~ {date_to or '전체'}"
     equipment_label = equipment_id or "전체 설비"
     line_label = line_id or "전체 라인"
 
-    user_input = (
-        "아래 조건에 해당하는 정지 기록을 MCP 도구로 조회하고, 원인 분석 리포트를 생성해줘.\n"
-        f"- 기간: {period}\n- 라인: {line_label}\n- 설비: {equipment_label}"
+    has_images = bool(images)
+
+    # 프롬프트용 메시지(이미지 포함)와 기록용 텍스트(이미지 제외)를 따로 받는다.
+    user_messages, history_text = _build_user_messages(
+        period=period,
+        line_label=line_label,
+        equipment_label=equipment_label,
+        images=images,
     )
 
     chat_history = _SESSION_STORE.get(session_id, []) if session_id else []
@@ -351,7 +506,7 @@ async def generate_report(
 
                 llm = _build_llm()
                 report = await _generate_with_retries(
-                    tools, llm, run_config, user_input, chat_history, equipment_label, line_label, period
+                    tools, llm, run_config, user_messages, chat_history, equipment_label, line_label, period
                 )
     except Exception as exc:  # MCP 연결/프로세스 기동 실패 등 인프라 레벨 오류
         logger.error("MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", exc)
@@ -362,8 +517,17 @@ async def generate_report(
     report.line_id = line_label
     report.period = period
 
+    # used_image도 같은 원칙. LLM이 "이미지를 봤다"고 말해도 믿지 않고, 실제로 넘겼는지로 정한다.
+    report.used_image = has_images
+    if not has_images:
+        # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
+        report.visual_findings = None
+
     if session_id:
-        chat_history.append(HumanMessage(content=user_input))
+        # ⚠️ 대화 기록에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
+        #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
+        #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).
+        chat_history.append(HumanMessage(content=history_text))
         chat_history.append(AIMessage(content=report.model_dump_json()))
         _SESSION_STORE[session_id] = chat_history[-_SESSION_HISTORY_LIMIT:]
 
