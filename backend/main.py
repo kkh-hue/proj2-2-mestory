@@ -15,7 +15,14 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
-from .db import get_dashboard_summary, get_report, init_db, list_chat_turns, list_reports
+from .db import (
+    get_dashboard_summary,
+    get_report,
+    init_db,
+    list_chat_turns,
+    list_equipment_status,
+    list_reports,
+)
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -211,3 +218,9 @@ async def get_report_detail(report_id: str) -> dict:
 async def get_dashboard() -> dict:
     """대시보드 화면용 — KPI·추이·최근 이벤트·최근 리포트를 한 번에 (backend/db.py에서 집계)."""
     return await get_dashboard_summary()
+
+
+@app.get("/equipment")
+async def get_equipment() -> list[dict]:
+    """설비관리 화면용 — 설비별 상태·가동률·마지막 점검일 (backend/db.py에서 집계)."""
+    return await list_equipment_status()

@@ -1,5 +1,6 @@
 import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
 import type { DashboardSummary } from "../types/dashboard";
+import type { EquipmentSummaryItem } from "../types/equipment";
 
 export class ReportApiError extends Error {
   constructor(
@@ -97,4 +98,12 @@ export async function getDashboard(): Promise<DashboardSummary> {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as DashboardSummary;
+}
+
+export async function listEquipment(): Promise<EquipmentSummaryItem[]> {
+  const response = await fetch(`${getBaseUrl()}/equipment`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as EquipmentSummaryItem[];
 }
