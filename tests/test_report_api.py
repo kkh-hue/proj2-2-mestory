@@ -104,10 +104,17 @@ def test_report_contract(api, payload):
     assert response.status_code == 200
     assert response.json() == expected
     assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
-    generator.assert_awaited_once_with(**{
+
+    generator.assert_awaited_once()
+    call_kwargs = dict(generator.call_args.kwargs)
+    # report_id는 요청마다 새로 만드는 UUID라 값을 미리 알 수 없다 — 형태만 확인하고,
+    # 응답 헤더(X-Report-Id)로 프론트에 그대로 전달됐는지를 대신 확인한다.
+    report_id = call_kwargs.pop("report_id")
+    assert response.headers["x-report-id"] == report_id
+    assert call_kwargs == {
         field: payload.get(field)
-        for field in ("line_id", "equipment_id", "date_from", "date_to", "session_id", "images")
-    })
+        for field in ("line_id", "equipment_id", "date_from", "date_to", "session_id", "images", "message")
+    }
 
 
 def test_invalid_request_keeps_422(api):

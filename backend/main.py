@@ -9,17 +9,26 @@ import os
 import re
 import time
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
+from .db import get_report, init_db, list_chat_turns, list_reports
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="MESTORY API")
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    await init_db()
+    yield
+
+
+app = FastAPI(title="MESTORY API", lifespan=_lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -27,9 +36,12 @@ app.add_middleware(
         for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
         if origin.strip()
     ],
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
     allow_credentials=False,
+    # 프론트가 방금 생성한 리포트의 id를 응답 헤더로 받아 "상세 리포트 보기"에 쓴다 (F-07).
+    # CORS 기본값은 "단순 헤더"만 JS에 노출하므로, 커스텀 헤더는 여기 명시해야 fetch에서 읽힌다.
+    expose_headers=["X-Report-Id"],
 )
 
 
@@ -63,6 +75,11 @@ class ReportRequest(BaseModel):
     date_from: str | None = Field(default=None, description="YYYY-MM-DD, 정지 시작일 기준")
     date_to: str | None = Field(default=None, description="YYYY-MM-DD, 정지 시작일 기준")
     session_id: str | None = Field(default=None, description="대화 맥락을 이어갈 세션 ID (선택)")
+    message: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="AI 원인분석 대화형 화면에서 사용자가 직접 입력한 자유 텍스트 질문 (F-07)",
+    )
     images: list[str] | None = Field(
         default=None,
         description=(
@@ -130,9 +147,10 @@ class ReportRequest(BaseModel):
 # (FastAPI의 라우트 데코레이터는 원래 함수를 그대로 돌려주므로 이렇게 겹쳐 쓸 수 있다.)
 @app.post("/api/agent", response_model=DowntimeReport)
 @app.post("/report", response_model=DowntimeReport)
-async def create_report(request: ReportRequest) -> DowntimeReport:
+async def create_report(request: ReportRequest, response: Response) -> DowntimeReport:
     """정지 로그를 조건에 맞게 조회해 원인 분석 리포트를 생성한다 (PRD F-04)."""
     request_id = str(uuid.uuid4())
+    report_id = str(uuid.uuid4())
     started = time.perf_counter()
     image_count = len(request.images) if request.images else 0
     logger.info(
@@ -147,7 +165,12 @@ async def create_report(request: ReportRequest) -> DowntimeReport:
         date_to=request.date_to,
         session_id=request.session_id,
         images=request.images,
+        message=request.message,
+        report_id=report_id,
     )
+    # response_model=DowntimeReport라 본문 계약은 못 건드린다 — "상세 리포트 보기"가
+    # 재조회 없이 바로 쓸 수 있게 id는 헤더로 얹어 준다 (CORS expose_headers 참고).
+    response.headers["X-Report-Id"] = report_id
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     # 토큰 사용량은 Langfuse 트레이스에서 확인한다 (이 로그에는 중복 기록하지 않음).
@@ -157,4 +180,28 @@ async def create_report(request: ReportRequest) -> DowntimeReport:
         "request_id=%s report 요청 완료 model=%s elapsed_ms=%d unclassified_count=%d used_image=%s",
         request_id, get_model_name(), elapsed_ms, report.unclassified_count, report.used_image,
     )
+    return report
+
+
+# ─────────────────────────────────────────────
+# 대화·리포트 조회 (F-07) — 값은 backend/db.py(Postgres)에서 온다.
+# ─────────────────────────────────────────────
+@app.get("/chat/{session_id}")
+async def get_chat_history(session_id: str) -> list[dict]:
+    """AI 원인분석 대화형 화면이 새로고침/재방문 때 이전 대화를 그대로 불러오는 곳."""
+    return await list_chat_turns(session_id)
+
+
+@app.get("/reports")
+async def get_reports(limit: int = 50) -> list[dict]:
+    """리포트 목록 화면용 (요약 필드만, causes 등 큰 값은 상세 조회에서)."""
+    return await list_reports(limit)
+
+
+@app.get("/reports/{report_id}")
+async def get_report_detail(report_id: str) -> dict:
+    """"상세 리포트 보기"·엑셀/PDF 다운로드가 쓰는 상세 조회."""
+    report = await get_report(report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report

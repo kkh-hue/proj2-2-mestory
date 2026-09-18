@@ -353,7 +353,10 @@ def test_AC11_이미지를_보내면_그대로_전달된다(api):
     body = response.json()
     assert body["used_image"] is True
     assert body["visual_findings"] == ["화면에 M-204 표시됨"]
-    generator.assert_awaited_once_with(
-        line_id=None, equipment_id="EQ-001", date_from=None, date_to=None,
-        session_id=None, images=[FAKE_IMAGE],
-    )
+    generator.assert_awaited_once()
+    call_kwargs = dict(generator.call_args.kwargs)
+    call_kwargs.pop("report_id")  # 요청마다 새로 만드는 UUID — 값 자체는 다른 시험에서 확인
+    assert call_kwargs == {
+        "line_id": None, "equipment_id": "EQ-001", "date_from": None, "date_to": None,
+        "session_id": None, "images": [FAKE_IMAGE], "message": None,
+    }

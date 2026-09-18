@@ -14,7 +14,7 @@
   - [x] 3단계 재시도/폴백 (① 프롬프트 재시도 → ② 축소 스키마 재시도 → ③ 고정 안전 응답), Docker로 폴백 동작 + **실제 API 키로 end-to-end 성공까지 확인함 (아래 5번 참고)**
   - [x] Langfuse 트레이스 연동 (`langfuse.langchain.CallbackHandler`, 키 없으면 자동으로 콜백 생략) — **실제 트레이스 도착까지 확인함 (아래 6번 참고)**
   - [x] `skills/SKILL.md` 전체를 시스템 프롬프트에 그대로 주입 (RAG 아님)
-  - [x] 세션별 대화 기록 — 프로토타입 dict (F-07 설계와 동일한 원리, `session_id` 줄 때만 사용)
+  - [x] 세션별 대화 기록 — `backend/db.py`(Postgres, `reports`/`chat_messages` 테이블)에 저장 (F-07, `session_id` 줄 때만 사용). 서버 재시작·재배포에도 남는다.
 - [x] 구조화 로그 — request_id, 사용 모델, elapsed_ms, unclassified_count (토큰 사용량은 중복 기록 안 하고 Langfuse 대시보드에서 확인)
 
 ## 실행 방법
@@ -85,5 +85,5 @@ Langfuse 키(`LANGFUSE_PUBLIC_KEY`/`SECRET_KEY`, Langfuse Cloud)를 처음 채�
 
 - **JSON 파싱 방식**: 에이전트 최종 출력 텍스트에서 `{...}` 구간만 뽑아 JSON으로 파싱하는 단순한 방식(`_extract_json`)을 썼습니다. LLM이 코드펜스 없이 잘 응답하면 문제없지만, 더 엄격하게 하려면 `with_structured_output` 같은 구조화 출력 기능을 쓰는 게 나을 수도 있어요 — 다만 이건 `create_tool_calling_agent` 흐름과는 결이 달라서 지금 방식으로 우선 두었습니다.
 - **축소 스키마(2단계 폴백) 응답을 `DowntimeReport`로 감쌀 때** `causes`를 빈 리스트로 두고 `confidence_note`에 요약을 텍스트로 붙였습니다 — 원인 목록이 구조화되어 있지 않다는 뜻인데, 이 방식이 평가셋 채점(F-09)과 잘 맞을지는 확인이 필요합니다.
-- **세션 대화 기록**은 프로세스 메모리 dict라 서버 재시작하면 날아갑니다. `POST /report`는 지금 단발 조회 위주라 큰 문제는 아니지만, 강경희 님 프론트(F-07)에서 실제로 후속 질문을 이어가는 UX를 만들 때 이 한계를 감안해야 합니다.
+- **세션 대화 기록**은 이제 `backend/db.py`(Postgres)에 저장됩니다 — 서버 재시작·재배포해도 남습니다. `POST /report`에 `message`(자유 텍스트 질문)를 추가해서 `/downtime/ai` 화면이 실제로 후속 질문을 이어갈 수 있게 했고, `GET /chat/{session_id}`로 이전 대화를 그대로 불러옵니다. `GET /reports`·`GET /reports/{id}`는 리포트 목록/상세·다운로드용입니다.
 - **`AGENT_MAX_ITERATIONS = 8`**: 도구 호출 무한루프 방지용으로 임의로 잡은 값입니다. 실제 에이전트 동작 보면서 조정이 필요할 수 있어요.

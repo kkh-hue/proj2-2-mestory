@@ -444,3 +444,10 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
   .alert-summary-row { flex-direction:column; }
   .modal-panel { padding:24px 20px; }
 }
+
+/* ── 리포트 상세 PDF 인쇄(window.print) — 사이드바·버튼은 지면에 필요 없다 ─── */
+@media print {
+  .sidebar,.no-print { display:none !important; }
+  .shell { display:block; }
+  .page { max-width:100%; padding:0; }
+}
