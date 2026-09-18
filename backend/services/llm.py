@@ -221,6 +221,8 @@ async def _run_agent_json(
         max_iterations=AGENT_MAX_ITERATIONS,
         handle_parsing_errors=True,
     )
+#   LLM 호출 지점 — OpenRouter의 OpenAI 호환 API를 LangChain ChatOpenAI 로 호출한다.
+# (에이전트가 MCP 도구를 고르고, 최종 응답을 여기서 받는다)
     result = await executor.ainvoke(
         {"input": user_input, "chat_history": chat_history},
         config=run_config,
