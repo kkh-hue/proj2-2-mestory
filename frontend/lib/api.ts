@@ -93,24 +93,28 @@ export async function getReport(reportId: string): Promise<SavedReport> {
   return (await response.json()) as SavedReport;
 }
 
-export async function getDashboard(): Promise<DashboardSummary> {
-  const response = await fetch(`${getBaseUrl()}/dashboard`);
+// asOf: "YYYY-MM-DD". 상단 날짜 선택 — 안 주면 backend가 오늘 기준으로 계산한다.
+export async function getDashboard(asOf?: string): Promise<DashboardSummary> {
+  const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
+  const response = await fetch(`${getBaseUrl()}/dashboard${query}`);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as DashboardSummary;
 }
 
-export async function listAlerts(): Promise<AlertItem[]> {
-  const response = await fetch(`${getBaseUrl()}/alerts`);
+export async function listAlerts(asOf?: string): Promise<AlertItem[]> {
+  const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
+  const response = await fetch(`${getBaseUrl()}/alerts${query}`);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as AlertItem[];
 }
 
-export async function listEquipment(): Promise<EquipmentSummaryItem[]> {
-  const response = await fetch(`${getBaseUrl()}/equipment`);
+export async function listEquipment(asOf?: string): Promise<EquipmentSummaryItem[]> {
+  const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
+  const response = await fetch(`${getBaseUrl()}/equipment${query}`);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }

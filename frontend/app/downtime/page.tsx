@@ -31,7 +31,6 @@ export default function DowntimeAnalysisPage() {
       <Topbar
         title="다운타임 분석"
         subtitle="설비별 다운타임 원인과 발생 현황을 분석하여 가동률 향상에 활용하세요."
-        date="2026.09.18"
         action={
           <a href="/downtime/report" className="new-analysis-button">
             <IconPlus />

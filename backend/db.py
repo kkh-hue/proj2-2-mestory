@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import psycopg
@@ -256,25 +256,40 @@ def _delta(today: float, yesterday: float) -> dict:
     return {"direction": "up" if change >= 0 else "down", "percent": round(abs(change), 1)}
 
 
-async def get_dashboard_summary() -> dict:
+async def get_dashboard_summary(as_of: date | None = None) -> dict:
+    """as_of를 안 주면 오늘 기준(기존과 동일). 주면 "그 날짜를 오늘로 보고" 어제 대비·
+    최근 7일 추이를 그 날짜 기준으로 다시 계산한다 (대시보드 상단 날짜 선택용)."""
+    day_start = as_of or datetime.now(timezone.utc).date()
+    day_end = day_start + timedelta(days=1)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
+    yesterday_start = day_start - timedelta(days=1)
+    trend_start = day_start - timedelta(days=6)
+
     try:
         async with await _connect() as conn:
             kpi_cur = await conn.execute(
                 """
                 select
-                    coalesce(sum(downtime_min) filter (where start_time >= current_date and downtime_min > 0), 0),
                     coalesce(sum(downtime_min) filter (
-                        where start_time >= current_date - 1 and start_time < current_date and downtime_min > 0
+                        where start_time >= %s and start_time < %s and downtime_min > 0
+                    ), 0),
+                    coalesce(sum(downtime_min) filter (
+                        where start_time >= %s and start_time < %s and downtime_min > 0
                     ), 0),
                     coalesce(avg(downtime_min) filter (
-                        where start_time >= current_date and end_time is not null and downtime_min > 0
+                        where start_time >= %s and start_time < %s and end_time is not null and downtime_min > 0
                     ), 0),
                     coalesce(avg(downtime_min) filter (
-                        where start_time >= current_date - 1 and start_time < current_date
+                        where start_time >= %s and start_time < %s
                         and end_time is not null and downtime_min > 0
                     ), 0)
                 from downtime_log
-                """
+                """,
+                (
+                    day_start, day_end,
+                    yesterday_start, day_start,
+                    day_start, day_end,
+                    yesterday_start, day_start,
+                ),
             )
             today_downtime, yesterday_downtime, today_avg_recovery, yesterday_avg_recovery = await kpi_cur.fetchone()
 
@@ -284,10 +299,11 @@ async def get_dashboard_summary() -> dict:
             reports_cur = await conn.execute(
                 """
                 select
-                    count(*) filter (where created_at >= current_date),
-                    count(*) filter (where created_at >= current_date - 1 and created_at < current_date)
+                    count(*) filter (where created_at >= %s and created_at < %s),
+                    count(*) filter (where created_at >= %s and created_at < %s)
                 from reports
-                """
+                """,
+                (day_start, day_end, yesterday_start, day_start),
             )
             today_reports, yesterday_reports = await reports_cur.fetchone()
 
@@ -296,10 +312,11 @@ async def get_dashboard_summary() -> dict:
                 select date_trunc('day', start_time)::date as day, line_id,
                        coalesce(sum(downtime_min) filter (where downtime_min > 0), 0) as total_min
                 from downtime_log
-                where start_time >= current_date - interval '6 days'
+                where start_time >= %s and start_time < %s
                 group by day, line_id
                 order by day
-                """
+                """,
+                (trend_start, day_end),
             )
             trend_rows = await trend_cur.fetchall()
 
@@ -314,16 +331,19 @@ async def get_dashboard_summary() -> dict:
                     where rr.equipment_id = d.equipment_id
                     order by rr.created_at desc limit 1
                 ) r on true
+                where d.start_time < %s
                 order by d.start_time desc
                 limit 10
-                """
+                """,
+                (day_end,),
             )
             event_rows = await events_cur.fetchall()
 
             latest_report_cur = await conn.execute(
                 "select id, equipment_id, line_id, period, causes, unclassified_count, "
                 "       confidence_note, recommended_action, visual_findings, used_image, created_at "
-                "from reports order by created_at desc limit 1"
+                "from reports where created_at < %s order by created_at desc limit 1",
+                (day_end,),
             )
             latest_report_row = await latest_report_cur.fetchone()
     except Exception as exc:
@@ -411,32 +431,45 @@ async def get_dashboard_summary() -> dict:
 # 같은 계정 기반 기능은 없어서 지어내지 않고, "24시간 이내 발생"을 미확인의
 # 대리 지표로 쓴다.
 # ─────────────────────────────────────────────
-async def list_alerts(limit: int = 30) -> list[dict]:
+async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
+    """as_of를 안 주면 오늘 기준(기존과 동일). 주면 그 날짜를 "지금"으로 보고 다시 계산한다.
+
+    ⚠️ end_time is null(진행 중) 다운타임은 원래 시간 제한이 없었는데, 이 시뮬레이션
+    데이터엔 미래 날짜 행도 섞여 있어(예: 2026-11) 그런 행이 항상 "가장 최근"으로
+    정렬 상단을 다 차지해 분석완료(report) 알림이 목록에서 밀려나는 문제가 있었다.
+    start_time < day_end로 상한을 걸어 고쳤다.
+    """
+    day_start = as_of or datetime.now(timezone.utc).date()
+    day_end = day_start + timedelta(days=1)
+    window_start = day_end - timedelta(days=7)
+    recent_start = day_end - timedelta(days=1)
+
     try:
         async with await _connect() as conn:
             downtime_cur = await conn.execute(
                 """
                 select d.log_id, d.equipment_id, d.line_id, d.error_code, d.start_time,
                        (d.end_time is null) as is_open,
-                       (d.start_time >= now() - interval '1 day') as is_recent,
-                       e.equipment_type
+                       (d.start_time >= %s) as is_recent,
+                       e.equipment_type, ec.description as error_description
                 from downtime_log d
                 left join equipment_master e on e.equipment_id = d.equipment_id
-                where d.end_time is null or d.start_time >= now() - interval '7 days'
+                left join error_code_dict ec on ec.error_code = d.error_code
+                where d.start_time < %s and (d.end_time is null or d.start_time >= %s)
                 order by d.start_time desc
                 limit %s
                 """,
-                (limit,),
+                (recent_start, day_end, window_start, limit),
             )
             downtime_rows = await downtime_cur.fetchall()
 
             report_cur = await conn.execute(
                 """
                 select id, equipment_id, line_id, recommended_action, created_at,
-                       (created_at >= now() - interval '1 day') as is_recent
-                from reports order by created_at desc limit %s
+                       (created_at >= %s) as is_recent
+                from reports where created_at < %s order by created_at desc limit %s
                 """,
-                (limit,),
+                (recent_start, day_end, limit),
             )
             report_rows = await report_cur.fetchall()
     except Exception as exc:
@@ -444,8 +477,11 @@ async def list_alerts(limit: int = 30) -> list[dict]:
         return []
 
     alerts: list[dict] = []
-    for log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent, equipment_type in downtime_rows:
-        cause_note = f"{error_code} 관련 " if error_code else ""
+    for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
+         equipment_type, error_description) in downtime_rows:
+        # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
+        # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
+        cause_note = f"{error_description or error_code} 관련 " if error_code else ""
         alerts.append({
             "id": f"downtime-{log_id}",
             "tone": "critical" if is_open else "warning",
@@ -478,7 +514,10 @@ async def list_alerts(limit: int = 30) -> list[dict]:
     alerts.sort(key=_sort_key, reverse=True)
     for alert in alerts:
         alert["date"] = alert["date"].isoformat()
-    return alerts[:limit]
+    # 여기서 다시 [:limit]로 자르지 않는다 — downtime·report 두 종류가 이미 각자
+    # limit만큼 따로 뽑혀 있는데, 여기서 합친 걸 한 번 더 자르면 한쪽이 많을 때
+    # 다른 쪽(특히 report=분석완료, 건수가 원래 적다)이 통째로 밀려날 수 있다.
+    return alerts
 
 
 # ─────────────────────────────────────────────
@@ -496,14 +535,19 @@ _ATTENTION_UTILIZATION_THRESHOLD = 95.0
 # 95% 이상에 몰려 있고 95.0% 아래는 소수 이상치)를 보고 이 값으로 다시 잡았다.
 
 
-async def list_equipment_status() -> list[dict]:
+async def list_equipment_status(as_of: date | None = None) -> list[dict]:
     """설비별 상태·가동률·마지막 점검일을 계산한다 (그대로 저장된 컬럼이 아니라 파생값).
 
-    - 상태: downtime_log에 아직 안 끝난(end_time is null) 기록이 있으면 "정지",
-      가동률이 _ATTENTION_UTILIZATION_THRESHOLD 미만이면 "주의", 아니면 "정상".
-    - 가동률: 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
+    - 상태: as_of 시점에 아직 안 끝난(end_time is null 또는 그 시점 이후 종료) 다운타임이
+      있으면 "정지", 가동률이 _ATTENTION_UTILIZATION_THRESHOLD 미만이면 "주의", 아니면 "정상".
+    - 가동률: as_of 기준 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
       데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
+    - as_of를 안 주면 오늘 기준(기존과 동일).
     """
+    day_start = as_of or datetime.now(timezone.utc).date()
+    day_end = day_start + timedelta(days=1)
+    window_start = day_end - timedelta(days=7)
+
     try:
         async with await _connect() as conn:
             cur = await conn.execute(
@@ -511,19 +555,21 @@ async def list_equipment_status() -> list[dict]:
                 select
                     e.equipment_id, e.line_id, e.equipment_type,
                     (select max(m."date") from maintenance_history m
-                     where m.equipment_id = e.equipment_id) as last_checked,
+                     where m.equipment_id = e.equipment_id and m."date" < %s) as last_checked,
                     exists(
                         select 1 from downtime_log d
-                        where d.equipment_id = e.equipment_id and d.end_time is null
+                        where d.equipment_id = e.equipment_id and d.start_time < %s
+                          and (d.end_time is null or d.end_time >= %s)
                     ) as is_down,
                     coalesce(sum(d2.downtime_min) filter (
-                        where d2.start_time >= now() - interval '7 days' and d2.downtime_min > 0
+                        where d2.start_time >= %s and d2.start_time < %s and d2.downtime_min > 0
                     ), 0) as recent_downtime_min
                 from equipment_master e
                 left join downtime_log d2 on d2.equipment_id = e.equipment_id
                 group by e.equipment_id, e.line_id, e.equipment_type
                 order by e.equipment_id
-                """
+                """,
+                (day_end, day_end, day_end, window_start, day_end),
             )
             rows = await cur.fetchall()
     except Exception as exc:

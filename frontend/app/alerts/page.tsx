@@ -3,36 +3,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AlertBoard from "../../components/AlertBoard";
+import AlertBoard, { matchesTab, type TabKey } from "../../components/AlertBoard";
 import Topbar from "../../components/Topbar";
 import { IconBell, IconCalendar, IconChevronRight } from "../../components/icons";
 import { listAlerts } from "../../lib/api";
 import type { AlertItem } from "../../types/alert";
 
-function isToday(iso: string) {
-  const date = new Date(iso);
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+function todayISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [asOf, setAsOf] = useState(todayISO());
+  const [activeTab, setActiveTab] = useState<TabKey>("all");
 
   useEffect(() => {
-    listAlerts()
+    setLoading(true);
+    listAlerts(asOf)
       .then(setAlerts)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "알림을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
-  }, []);
+  }, [asOf]);
 
-  const unreadCount = alerts.filter((a) => a.unread).length;
-  const todayCount = alerts.filter((a) => isToday(a.date)).length;
+  const unreadCount = alerts.filter((a) => matchesTab(a, "unread")).length;
+  const todayCount = alerts.filter((a) => matchesTab(a, "today")).length;
 
   return (
     <main className="page">
-      <Topbar title="알림센터" subtitle="중요한 설비 이벤트와 분석 상태를 알려드립니다." date="2026.09.18" />
+      <Topbar
+        title="알림센터"
+        subtitle="중요한 설비 이벤트와 분석 상태를 알려드립니다."
+        date={asOf}
+        onDateChange={setAsOf}
+      />
 
       {loading && (
         <section className="status-card status-loading" aria-live="polite">
@@ -49,7 +56,11 @@ export default function AlertsPage() {
       {!loading && !error && (
         <>
           <section className="alert-summary-row">
-            <article className="alert-summary-card alert-summary-critical">
+            <button
+              type="button"
+              className="alert-summary-card alert-summary-critical events-row-clickable"
+              onClick={() => setActiveTab("unread")}
+            >
               <span className="alert-summary-icon">
                 <IconBell />
               </span>
@@ -61,8 +72,12 @@ export default function AlertsPage() {
                 </div>
               </div>
               <IconChevronRight className="alert-summary-chevron" />
-            </article>
-            <article className="alert-summary-card alert-summary-accent">
+            </button>
+            <button
+              type="button"
+              className="alert-summary-card alert-summary-accent events-row-clickable"
+              onClick={() => setActiveTab("today")}
+            >
               <span className="alert-summary-icon">
                 <IconCalendar />
               </span>
@@ -74,10 +89,10 @@ export default function AlertsPage() {
                 </div>
               </div>
               <IconChevronRight className="alert-summary-chevron" />
-            </article>
+            </button>
           </section>
 
-          <AlertBoard items={alerts} />
+          <AlertBoard items={alerts} active={activeTab} onActiveChange={setActiveTab} />
         </>
       )}
     </main>
