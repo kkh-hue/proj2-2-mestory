@@ -756,10 +756,14 @@ async def generate_report(
         # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
         report.visual_findings = None
 
-    if report_id:
+    # 재시도를 다 써서 나온 고정 안전 응답은 저장하지 않는다 — 실패한 분석이 리포트 목록에
+    # 쌓이고, 다음 턴 LLM 맥락(load_chat_history)에 "자동 분석 실패" 답변으로 섞여 들어간다.
+    is_fallback = not report.causes and report.recommended_action == FALLBACK_MESSAGE
+
+    if report_id and not is_fallback:
         await save_report(report_id, report, session_id)
 
-    if session_id:
+    if session_id and not is_fallback:
         # ⚠️ 대화 기록(content)에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
         #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
         #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).
