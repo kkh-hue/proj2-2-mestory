@@ -69,6 +69,17 @@ FALLBACK_MESSAGE = "자동 분석 실패 — 원본 로그 확인 필요"
 
 AGENT_MAX_ITERATIONS = 8  # 도구 호출 무한루프 방지용 상한
 
+# 출력 토큰 상한.
+# 왜 굳이 거는가 (여기서 한 번 막혔다):
+#   OpenRouter는 요청마다 '최대로 나올 수 있는 비용'을 잔액에서 미리 잡아둔다.
+#   그 계산이 (입력 토큰 + max_tokens만큼의 출력 토큰)인데, max_tokens를 주지 않으면
+#   모델의 출력 상한(gpt-4o-mini는 16k)으로 잡는다. 우리 리포트 JSON은 1000토큰도
+#   안 나오므로 10배 넘게 과하게 잡히고, 잔액이 빠듯하면 몇 건 만에
+#   402 in_flight_budget_exhausted 로 막힌다.
+#   값을 더 줄이면 잔액은 아끼지만 긴 리포트가 잘려 JSON 파싱이 깨진다.
+#   causes가 여러 건인 최악의 경우를 재보고 여유를 둔 값이 2000이다.
+MAX_OUTPUT_TOKENS = 2000
+
 # 이미지는 "data:image/png;base64,iVBOR..." 같은 data URL 한 줄로 들어온다.
 # 이 정규식은 앞머리(data:image/png;base64,)와 뒤의 긴 base64 덩어리를 따로 잡는다.
 # 왜 필요한가: 그 덩어리가 Langfuse 트레이스나 대화 기록에 그대로 들어가면
@@ -152,15 +163,99 @@ def get_model_name() -> str:
     return os.getenv("MESTORY_LLM_MODEL", "openai/gpt-4o-mini")
 
 
+# LLM 제공자(provider)를 .env로 갈아끼울 수 있게 해 둔다.
+# 기본값은 OpenRouter — 아무것도 설정 안 하면 기존과 똑같이 동작한다.
+#
+# 왜 이렇게 열어 뒀나:
+#   OpenRouter 무료 한도가 바닥나 측정이 멈추는 일을 겪었다(하루 50건).
+#   Gemini는 OpenAI 호환 엔드포인트를 제공해서 base_url과 키만 바꾸면
+#   같은 ChatOpenAI 코드로 붙는다. 제공자 한 곳에 묶여 있으면
+#   그쪽이 막힐 때 할 수 있는 게 없다.
+#
+# Gemini로 쓸 때 (.env):
+#   MESTORY_LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+#   MESTORY_LLM_API_KEY=<Google AI Studio 키>
+#   MESTORY_LLM_MODEL=<gemini 모델명>
+DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def get_base_url() -> str:
+    return os.getenv("MESTORY_LLM_BASE_URL", DEFAULT_BASE_URL)
+
+
+_tool_call_passthrough_ready = False
+
+
+def _install_tool_call_passthrough() -> None:
+    """도구 호출을 되돌려 보낼 때 제공자가 붙인 추가 필드를 살려 보낸다.
+
+    왜 이런 걸 하나 (Gemini 3.x에서 막혔다):
+      Gemini 3.x는 함수 호출 응답에 thought_signature(추론 서명)를 붙이고,
+      다음 요청에 그걸 '그대로' 돌려받길 요구한다. 안 주면 400:
+        "Function call is missing a thought_signature in functionCall parts"
+      그런데 langchain_openai는 내보낼 때 tool_call을 id/type/function 세 칸으로
+      새로 만든다(_lc_tool_call_to_openai_tool_call) — 서명이 버려진다.
+      받을 때는 additional_kwargs["tool_calls"]에 원본이 남아 있으므로,
+      내보내기 직전에 원본의 추가 필드를 id로 짝지어 되붙인다.
+
+      확인 방법: 손으로 조립한 멀티턴 요청(원본 tool_calls를 그대로 전송)은
+      통과했고, LangChain 경로만 400이 났다. 차이가 이 필드뿐이었다.
+
+    안전성:
+      원본에 있는 필드 중 id/type/function을 덮어쓰지 않고 '없는 것만' 더한다.
+      OpenAI처럼 추가 필드가 없는 제공자에서는 더할 게 없어 아무 일도 안 일어난다.
+
+    치우는 방법:
+      langchain_openai가 이 필드를 다루게 되면(또는 Gemini를 안 쓰게 되면)
+      이 함수와 _build_llm 안의 호출 한 줄만 지우면 된다.
+    """
+    global _tool_call_passthrough_ready
+    if _tool_call_passthrough_ready:
+        return
+    _tool_call_passthrough_ready = True
+    try:
+        from langchain_openai.chat_models import base as _oai
+
+        original = _oai._convert_message_to_dict
+
+        def _patched(message):
+            result = original(message)
+            raw = getattr(message, "additional_kwargs", {}).get("tool_calls")
+            if not (result.get("tool_calls") and raw):
+                return result
+            by_id = {r.get("id"): r for r in raw if isinstance(r, dict)}
+            for call in result["tool_calls"]:
+                source = by_id.get(call.get("id"))
+                if not source:
+                    continue
+                for key, value in source.items():
+                    if key not in call:        # id/type/function은 건드리지 않는다
+                        call[key] = value
+            return result
+
+        _oai._convert_message_to_dict = _patched
+        logger.info("도구 호출의 제공자 추가 필드(thought_signature 등) 전달을 활성화했습니다")
+    except Exception as exc:
+        # 실패해도 서비스는 떠야 한다. Gemini를 쓸 때만 문제가 되고,
+        # 그때는 위의 400 메시지가 그대로 보인다.
+        logger.warning("도구 호출 추가 필드 전달 설정 실패: %s", exc)
+
+
 def _build_llm() -> ChatOpenAI:
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    # MESTORY_LLM_API_KEY가 있으면 그걸 쓰고, 없으면 기존 OPENROUTER_API_KEY를 쓴다
+    # (기존 설정 그대로 두고도 돌아가게).
+    _install_tool_call_passthrough()
+    api_key = os.getenv("MESTORY_LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY가 설정되지 않았습니다 (.env 확인)")
+        raise RuntimeError(
+            "LLM API 키가 없습니다 — MESTORY_LLM_API_KEY 또는 OPENROUTER_API_KEY를 .env에 설정하세요"
+        )
     return ChatOpenAI(
         model=get_model_name(),
         api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
+        base_url=get_base_url(),
         temperature=0,
+        max_tokens=MAX_OUTPUT_TOKENS,
     )
 
 
@@ -339,6 +434,48 @@ def _build_prompt(schema_json: str, extra_instruction: str = "") -> ChatPromptTe
     )
 
 
+def _escape_inner_quotes(text: str) -> str:
+    """문자열 값 안의 이스케이프 안 된 따옴표를 고쳐서 JSON을 살린다.
+
+    왜 필요한가:
+      모델이 evidence 같은 자연어 칸에 따옴표를 그대로 써서 보내는 일이 잦다.
+        {"evidence": "로그에 "E-102" 기록됨"}   ← 두 번째 따옴표에서 파싱이 깨진다
+      json.JSONDecodeError("Expecting ',' delimiter")로 나타난다.
+      모델을 바꿀 때마다 재발하므로(무료 모델일수록 잦다) 한 번 고쳐 둔다.
+
+    판별 방법:
+      문자열 안에서 만난 따옴표 뒤에 (공백을 건너뛰고) , } ] : 또는 끝이 오면
+      진짜 닫는 따옴표다. 그 외에는 값 안에 들어간 따옴표이므로 이스케이프한다.
+      완벽한 파서는 아니지만 이 실패 유형은 확실히 잡는다.
+    """
+    out: list[str] = []
+    in_string = False
+    escaped = False
+    for i, ch in enumerate(text):
+        if escaped:
+            out.append(ch)
+            escaped = False
+            continue
+        if ch == "\\":
+            out.append(ch)
+            escaped = True
+            continue
+        if ch == '"':
+            if not in_string:
+                in_string = True
+                out.append(ch)
+                continue
+            nxt = next((c for c in text[i + 1:] if not c.isspace()), "")
+            if nxt in (",", "}", "]", ":", ""):
+                in_string = False
+                out.append(ch)
+            else:
+                out.append('\\"')      # 값 안의 따옴표 — 이스케이프
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
 def _extract_json(text: str) -> dict:
     """에이전트 최종 출력에서 JSON 객체를 뽑아낸다. 코드펜스가 섞여 나와도 처리한다."""
     cleaned = text.strip()
@@ -348,8 +485,26 @@ def _extract_json(text: str) -> dict:
             cleaned = cleaned.split("\n", 1)[1]
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start == -1 or end == -1 or end < start:
+        # 여는 중괄호는 있는데 닫는 게 없다 = max_tokens에 걸려 잘렸을 가능성이 크다.
+        # 그냥 "JSON 못 찾음"으로 두면 원인을 못 찾으므로 구분해서 알린다.
+        if start != -1 and end == -1:
+            raise ValueError(
+                f"응답이 중간에 끊겼습니다 — MAX_OUTPUT_TOKENS({MAX_OUTPUT_TOKENS})에 걸렸을 수 있습니다. "
+                f"출력 길이 {len(cleaned)}자"
+            )
         raise ValueError("응답에서 JSON 객체를 찾지 못했습니다")
-    return json.loads(cleaned[start : end + 1])
+    candidate = cleaned[start : end + 1]
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError as exc:
+        # 값 안의 따옴표 때문일 수 있다 — 고쳐서 한 번만 더 해본다.
+        # 실패하면 원래 예외를 그대로 올려 재시도 사다리가 돌게 한다.
+        try:
+            repaired = json.loads(_escape_inner_quotes(candidate))
+        except json.JSONDecodeError:
+            raise exc
+        logger.info("JSON 문자열 안의 따옴표를 고쳐 파싱에 성공했습니다 (%s)", exc.msg)
+        return repaired
 
 
 async def _run_agent_json(
@@ -377,6 +532,58 @@ async def _run_agent_json(
         config=run_config,
     )
     return _extract_json(result["output"])
+
+
+# 마지막으로 발생한 인프라 오류. 폴백이 왜 났는지 밖에서 확인하는 용도다.
+# (llm.py는 예외를 삼키고 폴백을 돌려주므로, 이게 없으면 호출한 쪽은
+#  '재시도하면 풀릴 오류'인지 '백 번 해도 같은 오류'인지 구분할 수 없다.)
+_LAST_INFRA_ERROR: dict | None = None
+
+# 재시도해도 소용없는 상태 코드.
+#   401 키 만료·무효 / 403 권한 없음 / 404 라우팅 불가(모델·설정 문제)
+#   / 400 요청 자체가 잘못됨
+# 반대로 429(요청 몰림)·402(정산 대기)·500·503(서버 혼잡)은 기다리면 풀릴 수 있다.
+PERMANENT_STATUS = frozenset({400, 401, 403, 404})
+
+
+def _record_last_infra_error(roots: list[BaseException]) -> None:
+    global _LAST_INFRA_ERROR
+    exc = roots[0] if roots else None
+    status = getattr(exc, "status_code", None)
+    _LAST_INFRA_ERROR = {
+        "type": type(exc).__name__ if exc else None,
+        "message": str(exc)[:300] if exc else "",
+        "status_code": status,
+        "permanent": status in PERMANENT_STATUS,
+    }
+
+
+def last_infra_error() -> dict | None:
+    """마지막 인프라 오류 정보. 폴백이 아닌 정상 응답 뒤에는 옛 값이 남아 있을 수 있으니
+    '폴백이 났을 때'에만 참고한다. permanent=True면 재시도가 의미 없다."""
+    return _LAST_INFRA_ERROR
+
+
+def _root_causes(exc: BaseException) -> list[BaseException]:
+    """ExceptionGroup 안에 든 '진짜' 예외들을 평평하게 펴서 돌려준다.
+
+    왜 필요한가 (여기서 한 번 데였다):
+      MCP 클라이언트는 내부에서 anyio TaskGroup을 쓴다. 그 안에서 예외가 나면
+      ExceptionGroup에 싸여 올라오는데, ExceptionGroup은 str()이
+      "unhandled errors in a TaskGroup (1 sub-exception)" 로만 나온다.
+      그래서 `logger.error("...: %s", exc)` 로 찍으면 진짜 원인(예: HTTP 402,
+      429, 인증 실패)이 로그에 한 글자도 안 남는다 — 운영 중 원인 추적이 불가능해진다.
+      실제로 평가 실행 중 402(크레딧 소진)를 이 때문에 못 찾아 따로 진단해야 했다.
+
+    중첩될 수 있으므로(그룹 안의 그룹) 재귀로 내려간다.
+    """
+    subs = getattr(exc, "exceptions", None)
+    if not subs:
+        return [exc]
+    flat: list[BaseException] = []
+    for sub in subs:
+        flat.extend(_root_causes(sub))
+    return flat
 
 
 def _fallback_report(equipment_id: str, line_id: str, period: str) -> DowntimeReport:
@@ -523,14 +730,19 @@ async def generate_report(
                 report = await _generate_with_retries(
                     tools, llm, run_config, user_messages, chat_history, equipment_label, line_label, period
                 )
-    except Exception as exc:  # MCP 연결/프로세스 기동 실패 등 인프라 레벨 오류
-        # TaskGroup(anyio)이 감싸면 str(exc)만으로는 진짜 원인이 안 보인다 —
-        # exc_info로 전체 트레이스백을, sub-exception이 있으면 그 내용도 같이 남긴다.
-        sub_exceptions = getattr(exc, "exceptions", None)
-        if sub_exceptions:
-            for i, sub in enumerate(sub_exceptions, start=1):
-                logger.error("  └ sub-exception %d/%d: %r", i, len(sub_exceptions), sub)
-        logger.error("MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", exc, exc_info=exc)
+    except BaseException as exc:  # MCP 연결/프로세스 기동 실패 등 인프라 레벨 오류
+        # ExceptionGroup은 Exception이 아닐 수 있어 BaseException으로 받는다.
+        # (KeyboardInterrupt 등은 아래에서 그대로 다시 올린다)
+        if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            raise
+        roots = _root_causes(exc)
+        causes = "; ".join(f"{type(c).__name__}: {c}" for c in roots)
+        # 호출한 쪽(평가 스크립트 등)이 '재시도해도 소용없는 오류인지' 판단할 수 있게
+        # 마지막 원인을 남겨 둔다. 폴백 리포트만 보면 상태 코드를 알 수 없기 때문이다.
+        _record_last_infra_error(roots)
+        logger.error(
+            "MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", causes, exc_info=exc
+        )
         return _fallback_report(equipment_label, line_label, period)
 
     # equipment_id/line_id/period는 사용자가 준 조건이 정답이다 — LLM 출력으로 덮어쓰지 않는다.
