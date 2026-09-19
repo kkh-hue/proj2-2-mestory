@@ -132,7 +132,7 @@ export default function AiAnalysisChatPage() {
                           onClick={() => void submitQuestion(`${item.equipment_id} ${item.equipment_type} 다운타임 원인을 분석해줘`)}
                         >
                           {item.status === "정지" ? <IconStopCircle /> : <IconTriangleWarning />}
-                          {item.equipment_id}
+                          {item.equipment_id} {item.equipment_type}
                         </button>
                       ))}
                     </div>
