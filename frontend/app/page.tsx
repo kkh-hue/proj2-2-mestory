@@ -14,6 +14,11 @@ import type { DashboardSummary } from "../types/dashboard";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
+function todayISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function formatTrendLabel(iso: string) {
   const date = new Date(iso);
   return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}\n(${WEEKDAYS[date.getDay()]})`;
@@ -53,13 +58,20 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [asOf, setAsOf] = useState(todayISO());
 
   useEffect(() => {
-    getDashboard()
-      .then(setSummary)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    getDashboard(asOf)
+      .then((data) => !cancelled && setSummary(data))
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [asOf]);
 
   const needsReviewCount = summary?.recent_events.filter((e) => e.severity === "판정 불가").length ?? 0;
 
@@ -68,7 +80,8 @@ export default function DashboardPage() {
       <Topbar
         title="대시보드"
         subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다."
-        date="2026.09.18"
+        date={asOf}
+        onDateChange={setAsOf}
         action={<NewAnalysisModal />}
       />
 

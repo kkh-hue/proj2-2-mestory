@@ -10,17 +10,29 @@ import { IconCheck, IconPlus, IconReport, IconStopCircle, IconTriangleWarning } 
 import { listEquipment } from "../../lib/api";
 import type { EquipmentSummaryItem } from "../../types/equipment";
 
+function todayISO() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export default function EquipmentPage() {
   const [items, setItems] = useState<EquipmentSummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [asOf, setAsOf] = useState(todayISO());
 
   useEffect(() => {
-    listEquipment()
-      .then(setItems)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    listEquipment(asOf)
+      .then((data) => !cancelled && setItems(data))
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [asOf]);
 
   const okCount = items.filter((item) => item.status === "정상").length;
   const warnCount = items.filter((item) => item.status === "주의").length;
@@ -38,7 +50,8 @@ export default function EquipmentPage() {
       <Topbar
         title="설비 관리"
         subtitle="라인과 설비 상태를 한눈에 확인하세요."
-        date="2026.09.18"
+        date={asOf}
+        onDateChange={setAsOf}
         action={
           <button type="button" className="new-analysis-button">
             <IconPlus />

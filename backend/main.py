@@ -10,6 +10,8 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import date
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from .db import (
     get_dashboard_summary,
+    get_downtime_analysis,
     get_report,
     init_db,
     list_alerts,
@@ -216,18 +219,36 @@ async def get_report_detail(report_id: str) -> dict:
 
 
 @app.get("/dashboard")
-async def get_dashboard() -> dict:
-    """대시보드 화면용 — KPI·추이·최근 이벤트·최근 리포트를 한 번에 (backend/db.py에서 집계)."""
-    return await get_dashboard_summary()
+async def get_dashboard(as_of: date | None = None) -> dict:
+    """대시보드 화면용 — KPI·추이·최근 이벤트·최근 리포트를 한 번에 (backend/db.py에서 집계).
+
+    as_of(YYYY-MM-DD)를 주면 그 날짜를 "오늘"로 보고 다시 집계한다 (상단 날짜 선택).
+    """
+    return await get_dashboard_summary(as_of)
+
+
+@app.get("/downtime/analysis")
+async def get_downtime_analysis_view(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    line_id: str | None = None,
+    equipment_id: str | None = None,
+    status: Literal["all", "closed", "open"] = "all",
+) -> dict:
+    """다운타임 분석 화면용 — 조건에 맞는 정지를 원인(에러코드)별로 집계 (docs/specs/downtime-analysis.md)."""
+    try:
+        return await get_downtime_analysis(date_from, date_to, line_id, equipment_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/alerts")
-async def get_alerts(limit: int = 30) -> list[dict]:
+async def get_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     """알림센터 화면용 — downtime_log·reports에서 파생시킨 알림 (backend/db.py 참고)."""
-    return await list_alerts(limit)
+    return await list_alerts(limit, as_of)
 
 
 @app.get("/equipment")
-async def get_equipment() -> list[dict]:
+async def get_equipment(as_of: date | None = None) -> list[dict]:
     """설비관리 화면용 — 설비별 상태·가동률·마지막 점검일 (backend/db.py에서 집계)."""
-    return await list_equipment_status()
+    return await list_equipment_status(as_of)

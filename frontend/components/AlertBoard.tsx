@@ -1,29 +1,47 @@
 "use client";
 
-import { useState } from "react";
 import AlertRow from "./AlertRow";
 import type { AlertItem, AlertTone } from "../types/alert";
 
-const TAB_DEFS = [
+export const TAB_DEFS = [
   { key: "all", label: "전체" },
   { key: "unread", label: "미확인" },
+  { key: "today", label: "오늘" },
   { key: "downtime", label: "다운타임" },
   { key: "analysis", label: "분석 완료" },
 ] as const;
 
-type TabKey = (typeof TAB_DEFS)[number]["key"];
+export type TabKey = (typeof TAB_DEFS)[number]["key"];
 
-function matchesTab(alert: AlertItem, tab: TabKey) {
+// "오늘"은 실제 오늘이 아니라 화면에서 고른 기준일(asOf, YYYY-MM-DD)이다 —
+// 다른 날짜를 골랐는데 실제 오늘과 비교하면 "오늘" 탭이 항상 비어 버린다.
+function isSameDay(iso: string, asOf: string) {
+  const date = new Date(iso);
+  const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return local === asOf;
+}
+
+export function matchesTab(alert: AlertItem, tab: TabKey, asOf: string) {
   if (tab === "all") return true;
   if (tab === "unread") return alert.unread;
+  if (tab === "today") return isSameDay(alert.date, asOf);
   if (tab === "downtime") return (["critical", "warning"] as AlertTone[]).includes(alert.tone);
   if (tab === "analysis") return alert.tone === "analysis";
   return true;
 }
 
-export default function AlertBoard({ items }: { items: AlertItem[] }) {
-  const [active, setActive] = useState<TabKey>("all");
-  const visible = items.filter((item) => matchesTab(item, active));
+export default function AlertBoard({
+  items,
+  asOf,
+  active,
+  onActiveChange,
+}: {
+  items: AlertItem[];
+  asOf: string;
+  active: TabKey;
+  onActiveChange: (tab: TabKey) => void;
+}) {
+  const visible = items.filter((item) => matchesTab(item, active, asOf));
 
   return (
     <>
@@ -33,9 +51,9 @@ export default function AlertBoard({ items }: { items: AlertItem[] }) {
             type="button"
             key={tab.key}
             className={`alert-tab${active === tab.key ? " active" : ""}`}
-            onClick={() => setActive(tab.key)}
+            onClick={() => onActiveChange(tab.key)}
           >
-            {tab.label} <span className="alert-tab-count">{items.filter((item) => matchesTab(item, tab.key)).length}</span>
+            {tab.label} <span className="alert-tab-count">{items.filter((item) => matchesTab(item, tab.key, asOf)).length}</span>
           </button>
         ))}
       </div>

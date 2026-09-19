@@ -83,8 +83,7 @@ function DowntimeAnalysisRun() {
     <main className="page">
       <Topbar
         title="분석 실행"
-        subtitle="조건을 입력하면 실제 원인 분석 리포트를 생성합니다."
-        date={today.replaceAll("-", ".")}
+        subtitle="조건을 입력하면 실제 원인 분석 리포트를 생성합니다. 아래에서 조회 기간을 직접 고를 수 있습니다."
         action={
           <button type="submit" form="analysis-filters" className="new-analysis-button" disabled={loading}>
             <IconPlus />

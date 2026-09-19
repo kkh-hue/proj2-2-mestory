@@ -101,7 +101,7 @@ export default function AiAnalysisChatPage() {
 
   return (
     <main className="page">
-      <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." date="2026.09.18" />
+      <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." />
 
       <div className="ai-chat-grid">
         <section className="ai-chat-panel">
