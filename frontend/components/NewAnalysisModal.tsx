@@ -1,7 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { listEquipment } from "../lib/api";
+import { todayKst } from "../lib/date";
+import type { EquipmentSummaryItem } from "../types/equipment";
 import { IconCalendar, IconEquipment, IconFolder, IconPlus, IconTarget, IconX } from "./icons";
 
 const SCOPES = ["전체 원인", "전기", "기계", "공정"] as const;
@@ -11,10 +14,51 @@ export default function NewAnalysisModal() {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<(typeof SCOPES)[number]>("전체 원인");
   const [memo, setMemo] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [lineId, setLineId] = useState("");
+  const [equipmentId, setEquipmentId] = useState("");
+  const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
+  const [optionsError, setOptionsError] = useState(false);
+  const [validationError, setValidationError] = useState("");
+
+  // 열 때마다 오늘(KST)로 초기화하고, 라인·설비 목록은 실제 /equipment 데이터에서 가져온다.
+  useEffect(() => {
+    if (!open) return;
+    const today = todayKst();
+    setDateFrom(today);
+    setDateTo(today);
+    setLineId("");
+    setEquipmentId("");
+    setValidationError("");
+    setOptionsError(false);
+    let cancelled = false;
+    listEquipment()
+      .then((items) => !cancelled && setEquipment(items))
+      .catch(() => !cancelled && setOptionsError(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const lines = useMemo(() => [...new Set(equipment.map((e) => e.line_id))].sort(), [equipment]);
+  const equipmentOptions = useMemo(
+    () => equipment.filter((e) => !lineId || e.line_id === lineId).map((e) => e.equipment_id).sort(),
+    [equipment, lineId],
+  );
 
   function goToRealAnalysis() {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setValidationError("시작일은 종료일보다 늦을 수 없습니다.");
+      return;
+    }
+    const params = new URLSearchParams({ autorun: "1" });
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    if (lineId) params.set("line_id", lineId);
+    if (equipmentId) params.set("equipment_id", equipmentId);
     setOpen(false);
-    router.push("/downtime/report");
+    router.push(`/downtime/report?${params.toString()}`);
   }
 
   return (
@@ -45,11 +89,11 @@ export default function NewAnalysisModal() {
                   <div className="modal-date-fields">
                     <label>
                       시작일
-                      <input type="date" defaultValue="2026-09-12" />
+                      <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
                     </label>
                     <label>
                       종료일
-                      <input type="date" defaultValue="2026-09-18" />
+                      <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                     </label>
                   </div>
                 </div>
@@ -58,11 +102,19 @@ export default function NewAnalysisModal() {
                   <span className="modal-field-label">
                     <IconFolder /> 라인 선택
                   </span>
-                  <select defaultValue="">
+                  <select
+                    value={lineId}
+                    onChange={(e) => {
+                      setLineId(e.target.value);
+                      setEquipmentId("");
+                    }}
+                  >
                     <option value="">전체 라인</option>
-                    <option value="LINE-A">LINE-A</option>
-                    <option value="LINE-B">LINE-B</option>
-                    <option value="LINE-C">LINE-C</option>
+                    {lines.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -70,11 +122,15 @@ export default function NewAnalysisModal() {
                   <span className="modal-field-label">
                     <IconEquipment /> 설비 선택
                   </span>
-                  <select defaultValue="">
+                  <select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)}>
                     <option value="">전체 설비</option>
-                    <option value="EQ-021">EQ-021</option>
-                    <option value="EQ-114">EQ-114</option>
+                    {equipmentOptions.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
                   </select>
+                  {optionsError && <span className="form-error">라인·설비 목록을 불러오지 못했습니다.</span>}
                 </div>
 
                 <div className="modal-field">
@@ -112,18 +168,18 @@ export default function NewAnalysisModal() {
 
               <aside className="modal-info-panel">
                 <div>
-                  <span className="modal-info-label">예상 분석 데이터</span>
-                  <div className="modal-info-value">1,248건</div>
+                  <span className="modal-info-label">분석 조건 요약</span>
+                  <div className="modal-info-value">{dateFrom === dateTo ? dateFrom : `${dateFrom} ~ ${dateTo}`}</div>
                 </div>
-                <hr />
-                <div>
-                  <span className="modal-info-label">예상 소요 시간</span>
-                  <div className="modal-info-value">약 2분</div>
-                </div>
-                <p className="modal-info-note">선택한 조건에 따라 예상되는 분석 데이터 수와 소요 시간을 안내합니다.</p>
+                <p className="modal-info-note">
+                  {lineId || "전체 라인"} · {equipmentId || "전체 설비"}
+                  <br />
+                  "분석 시작"을 누르면 이 조건으로 분석을 실행합니다.
+                </p>
               </aside>
             </div>
 
+            {validationError && <p className="form-error" role="alert">{validationError}</p>}
             <div className="modal-footer">
               <button type="button" className="secondary-button" onClick={() => setOpen(false)}>
                 취소
