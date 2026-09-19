@@ -55,7 +55,7 @@ export default function AiSummaryCard({ report }: { report: SavedReport | null }
           <ul>
             {report.causes.map((cause, index) => (
               <li key={`${cause.error_code}-${index}`}>
-                <span className="ai-breakdown-label">{cause.error_code}</span>
+                <span className="ai-breakdown-label" title={cause.description}>{cause.description}</span>
                 <span className="ai-breakdown-bar-track">
                   <span className="ai-breakdown-bar-fill" style={{ width: `${SEVERITY_WIDTH[cause.severity] ?? 12}%` }} />
                 </span>
