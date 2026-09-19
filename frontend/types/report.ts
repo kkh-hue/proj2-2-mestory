@@ -56,3 +56,12 @@ export interface ChatTurn {
   created_at: string;
   report?: SavedReport;
 }
+
+// GET /chat/sessions 목록 항목 — AI 원인분석 화면 왼쪽 세션 목록용.
+export interface ChatSessionSummary {
+  session_id: string;
+  title: string | null;
+  started_at: string;
+  last_active: string;
+  turn_count: number;
+}

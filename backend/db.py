@@ -72,14 +72,20 @@ async def init_db() -> None:
             await conn.execute(
                 """
                 create table if not exists chat_messages (
-                    id         bigserial primary key,
-                    session_id text not null,
-                    role       text not null check (role in ('user', 'assistant')),
-                    content    text not null,
-                    report_id  text,
-                    created_at timestamptz not null default now()
+                    id              bigserial primary key,
+                    session_id      text not null,
+                    role            text not null check (role in ('user', 'assistant')),
+                    content         text not null,
+                    display_content text,
+                    report_id       text,
+                    created_at      timestamptz not null default now()
                 )
                 """
+            )
+            # content는 LLM 대화 맥락용(load_chat_history)이라 원래도 손대면 안 된다 —
+            # 이미 배포된 테이블에 화면 표시용 칸만 뒤늦게 추가한다.
+            await conn.execute(
+                "alter table chat_messages add column if not exists display_content text"
             )
             await conn.execute(
                 "create index if not exists idx_chat_messages_session "
@@ -125,12 +131,23 @@ async def save_report(report_id: str, report: Any, session_id: str | None) -> No
         logger.warning("리포트 저장 실패 (report_id=%s): %s", report_id, exc)
 
 
-async def save_message(session_id: str, role: str, content: str, report_id: str | None = None) -> None:
+async def save_message(
+    session_id: str,
+    role: str,
+    content: str,
+    report_id: str | None = None,
+    display_content: str | None = None,
+) -> None:
+    """content는 LLM 대화 맥락용(원문 그대로), display_content는 화면 표시용(짧고 사람이 읽는 문장).
+
+    display_content를 안 주면(기존 호출부) content를 그대로 화면에도 쓴다 — 회귀 없음.
+    """
     try:
         async with await _connect() as conn:
             await conn.execute(
-                "insert into chat_messages (session_id, role, content, report_id) values (%s, %s, %s, %s)",
-                (session_id, role, content, report_id),
+                "insert into chat_messages (session_id, role, content, display_content, report_id) "
+                "values (%s, %s, %s, %s, %s)",
+                (session_id, role, content, display_content, report_id),
             )
     except Exception as exc:
         logger.warning("대화 메시지 저장 실패 (session_id=%s): %s", session_id, exc)
@@ -162,7 +179,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
     try:
         async with await _connect() as conn:
             cur = await conn.execute(
-                "select m.role, m.content, m.report_id, m.created_at, "
+                "select m.role, m.content, m.display_content, m.report_id, m.created_at, "
                 "       r.id, r.equipment_id, r.line_id, r.period, r.causes, "
                 "       r.unclassified_count, r.confidence_note, r.recommended_action, "
                 "       r.visual_findings, r.used_image "
@@ -177,9 +194,9 @@ async def list_chat_turns(session_id: str) -> list[dict]:
         return []
 
     turns: list[dict] = []
-    for (role, content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
+    for (role, content, display_content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
          unclassified_count, confidence_note, recommended_action, visual_findings, used_image) in rows:
-        turn: dict = {"role": role, "content": content, "created_at": created_at.isoformat()}
+        turn: dict = {"role": role, "content": display_content or content, "created_at": created_at.isoformat()}
         if report_id and r_id:
             turn["report"] = {
                 "id": r_id,
@@ -195,6 +212,49 @@ async def list_chat_turns(session_id: str) -> list[dict]:
             }
         turns.append(turn)
     return turns
+
+
+async def list_chat_sessions(limit: int = 30) -> list[dict]:
+    """AI 원인분석 화면 왼쪽에 띄울 대화 세션 목록. 세션 전용 테이블이 없어서
+    chat_messages를 session_id로 묶어 만든다 — 제목은 그 세션의 첫 user 메시지."""
+    try:
+        async with await _connect() as conn:
+            cur = await conn.execute(
+                """
+                select
+                    m.session_id,
+                    min(m.created_at) as started_at,
+                    max(m.created_at) as last_active,
+                    count(*) filter (where m.role = 'user') as turn_count,
+                    (
+                        select coalesce(m2.display_content, m2.content)
+                        from chat_messages m2
+                        where m2.session_id = m.session_id and m2.role = 'user'
+                        order by m2.created_at asc
+                        limit 1
+                    ) as title
+                from chat_messages m
+                group by m.session_id
+                order by max(m.created_at) desc
+                limit %s
+                """,
+                (limit,),
+            )
+            rows = await cur.fetchall()
+    except Exception as exc:
+        logger.warning("대화 세션 목록 조회 실패: %s", exc)
+        return []
+
+    return [
+        {
+            "session_id": session_id,
+            "title": title,
+            "started_at": started_at.isoformat(),
+            "last_active": last_active.isoformat(),
+            "turn_count": turn_count,
+        }
+        for session_id, started_at, last_active, turn_count, title in rows
+    ]
 
 
 async def list_reports(limit: int = 50) -> list[dict]:

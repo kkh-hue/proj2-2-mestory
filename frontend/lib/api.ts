@@ -1,4 +1,4 @@
-import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
+import type { ChatSessionSummary, ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedReport } from "../types/report";
 import type { DashboardSummary } from "../types/dashboard";
 import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
@@ -76,6 +76,14 @@ export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as ChatTurn[];
+}
+
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  const response = await fetch(`${getBaseUrl()}/chat/sessions`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as ChatSessionSummary[];
 }
 
 export async function listReports(): Promise<ReportSummary[]> {

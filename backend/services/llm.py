@@ -756,14 +756,28 @@ async def generate_report(
         # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
         report.visual_findings = None
 
-    if report_id:
+    # 재시도를 다 써서 나온 고정 안전 응답은 저장하지 않는다 — 실패한 분석이 리포트 목록에
+    # 쌓이고, 다음 턴 LLM 맥락(load_chat_history)에 "자동 분석 실패" 답변으로 섞여 들어간다.
+    is_fallback = not report.causes and report.recommended_action == FALLBACK_MESSAGE
+
+    if report_id and not is_fallback:
         await save_report(report_id, report, session_id)
 
-    if session_id:
-        # ⚠️ 대화 기록에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
+    if session_id and not is_fallback:
+        # ⚠️ 대화 기록(content)에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
         #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
         #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).
-        await save_message(session_id, "user", history_text)
-        await save_message(session_id, "assistant", report.model_dump_json(), report_id=report_id)
+        #    content는 LLM이 다음 턴에 참고할 전체 프롬프트/JSON 그대로 두고,
+        #    display_content만 화면에 보여줄 짧은 문장으로 따로 저장한다 —
+        #    안 그러면 새로고침 후 채팅창에 원본 프롬프트·리포트 JSON이 그대로 노출된다.
+        #    질문 없이 조건만으로 요청하거나 recommended_action이 비면 display_content가
+        #    None이 돼 원본 프롬프트/JSON이 다시 노출되므로, 짧은 대체 문장을 채워 둔다.
+        user_display = message or f"{period} · {line_label} · {equipment_label} 원인 분석 요청"
+        assistant_display = report.recommended_action or "원인 분석 리포트가 생성되었습니다."
+        await save_message(session_id, "user", history_text, display_content=user_display)
+        await save_message(
+            session_id, "assistant", report.model_dump_json(),
+            report_id=report_id, display_content=assistant_display,
+        )
 
     return report
