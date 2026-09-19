@@ -4,7 +4,8 @@
 // "다운타임 분석"(/downtime)은 디자인 목업이라 이 화면을 별도 경로로 분리했다 — "분석 실행" 버튼에서 진입.
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
 import CauseBreakdown from "../../../components/CauseBreakdown";
 import CauseDetailTable from "../../../components/CauseDetailTable";
 import FilterCard from "../../../components/FilterCard";
@@ -12,28 +13,48 @@ import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
 import { IconCalendar, IconEquipment, IconChart as IconLine, IconPlus } from "../../../components/icons";
 import { createReport } from "../../../lib/api";
+import { todayKst } from "../../../lib/date";
 import type { DowntimeReport, ReportRequest } from "../../../types/report";
 
 function makeSessionId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
 }
 
-const today = new Date().toISOString().slice(0, 10);
+const today = todayKst();
 
 export default function DowntimeAnalysisRunPage() {
+  // useSearchParams는 Suspense 경계가 없으면 프로덕션 빌드가 실패한다.
+  return (
+    <Suspense fallback={null}>
+      <DowntimeAnalysisRun />
+    </Suspense>
+  );
+}
+
+function DowntimeAnalysisRun() {
+  const params = useSearchParams();
   const [sessionId] = useState(makeSessionId);
-  const [dateFrom, setDateFrom] = useState(today);
-  const [dateTo, setDateTo] = useState(today);
-  const [lineId, setLineId] = useState("");
-  const [equipmentId, setEquipmentId] = useState("");
+  const [dateFrom, setDateFrom] = useState(params.get("date_from") ?? today);
+  const [dateTo, setDateTo] = useState(params.get("date_to") ?? today);
+  const [lineId, setLineId] = useState(params.get("line_id") ?? "");
+  const [equipmentId, setEquipmentId] = useState(params.get("equipment_id") ?? "");
   const [validationError, setValidationError] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<DowntimeReport | null>(null);
 
-  async function runAnalysis(event: FormEvent) {
-    event.preventDefault();
+  // "새 분석 요청" 모달에서 넘어온 경우(autorun=1) 입력한 조건으로 한 번만 자동 실행한다.
+  const autorunDone = useRef(false);
+  useEffect(() => {
+    if (params.get("autorun") !== "1" || autorunDone.current) return;
+    autorunDone.current = true;
+    void runAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function runAnalysis(event?: FormEvent) {
+    event?.preventDefault();
     if (dateFrom && dateTo && dateFrom > dateTo) {
       setValidationError("시작일은 종료일보다 늦을 수 없습니다.");
       return;
