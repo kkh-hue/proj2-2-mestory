@@ -18,9 +18,12 @@ export default function Topbar({ title, subtitle, date, action }: Props) {
       </div>
       <div className="topbar-actions">
         {date && (
-          <span className="date-pill">
+          // 날짜 검색/필터가 아니라 "이 화면 데이터가 어느 날짜 기준인지" 보여주는
+          // 정보 표시다 — 달력 아이콘 때문에 클릭 가능한 검색창처럼 보인다는 피드백이
+          // 있어 "기준일"을 앞에 붙여 명확히 했다.
+          <span className="date-pill" title="이 화면 데이터의 기준일입니다 (검색/필터 아님)">
             <IconCalendar />
-            {date}
+            기준일 {date}
           </span>
         )}
         {action ?? (

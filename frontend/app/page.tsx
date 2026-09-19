@@ -14,6 +14,11 @@ import type { DashboardSummary } from "../types/dashboard";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
+function formatToday() {
+  const date = new Date();
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function formatTrendLabel(iso: string) {
   const date = new Date(iso);
   return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}\n(${WEEKDAYS[date.getDay()]})`;
@@ -68,7 +73,7 @@ export default function DashboardPage() {
       <Topbar
         title="대시보드"
         subtitle="AI가 설비 정지 원인을 빠르게 찾아드립니다."
-        date="2026.09.18"
+        date={formatToday()}
         action={<NewAnalysisModal />}
       />
 
