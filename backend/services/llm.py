@@ -524,7 +524,13 @@ async def generate_report(
                     tools, llm, run_config, user_messages, chat_history, equipment_label, line_label, period
                 )
     except Exception as exc:  # MCP 연결/프로세스 기동 실패 등 인프라 레벨 오류
-        logger.error("MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", exc)
+        # TaskGroup(anyio)이 감싸면 str(exc)만으로는 진짜 원인이 안 보인다 —
+        # exc_info로 전체 트레이스백을, sub-exception이 있으면 그 내용도 같이 남긴다.
+        sub_exceptions = getattr(exc, "exceptions", None)
+        if sub_exceptions:
+            for i, sub in enumerate(sub_exceptions, start=1):
+                logger.error("  └ sub-exception %d/%d: %r", i, len(sub_exceptions), sub)
+        logger.error("MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", exc, exc_info=exc)
         return _fallback_report(equipment_label, line_label, period)
 
     # equipment_id/line_id/period는 사용자가 준 조건이 정답이다 — LLM 출력으로 덮어쓰지 않는다.
