@@ -248,6 +248,15 @@ async def get_report(report_id: str) -> dict | None:
 # 대시보드 화면 (F-07) — KPI·추이·최근 이벤트를 한 번에 집계한다.
 # equipment_master·downtime_log는 scripts/seed_db.py가 만든 시뮬레이션 테이블.
 # ─────────────────────────────────────────────
+# as_of를 안 준 기본 기준일. 서버(Railway)는 UTC라 UTC 날짜를 쓰면 한국 시간 오전 9시 전까지
+# 하루 전 날짜로 계산된다 — 프론트가 보내는 브라우저 로컬(한국) 날짜와 어긋나므로 KST로 맞춘다.
+_KST = timezone(timedelta(hours=9))
+
+
+def _today_kst() -> date:
+    return datetime.now(_KST).date()
+
+
 def _delta(today: float, yesterday: float) -> dict:
     """"전일 대비" 배지 하나를 만든다. 어제 값이 0이면 방향을 판단할 기준이 없어 0%로 둔다."""
     if yesterday == 0:
@@ -259,7 +268,7 @@ def _delta(today: float, yesterday: float) -> dict:
 async def get_dashboard_summary(as_of: date | None = None) -> dict:
     """as_of를 안 주면 오늘 기준(기존과 동일). 주면 "그 날짜를 오늘로 보고" 어제 대비·
     최근 7일 추이를 그 날짜 기준으로 다시 계산한다 (대시보드 상단 날짜 선택용)."""
-    day_start = as_of or datetime.now(timezone.utc).date()
+    day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
     yesterday_start = day_start - timedelta(days=1)
     trend_start = day_start - timedelta(days=6)
@@ -439,7 +448,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     정렬 상단을 다 차지해 분석완료(report) 알림이 목록에서 밀려나는 문제가 있었다.
     start_time < day_end로 상한을 걸어 고쳤다.
     """
-    day_start = as_of or datetime.now(timezone.utc).date()
+    day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
     window_start = day_end - timedelta(days=7)
     recent_start = day_end - timedelta(days=1)
@@ -544,7 +553,7 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
       데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
     - as_of를 안 주면 오늘 기준(기존과 동일).
     """
-    day_start = as_of or datetime.now(timezone.utc).date()
+    day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
     window_start = day_end - timedelta(days=7)
 
