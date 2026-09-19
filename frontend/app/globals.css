@@ -395,7 +395,17 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .modal-footer .secondary-button,.modal-footer .primary-button-inline { padding:11px 20px; }
 
 /* ── AI 원인 분석 대화형 화면 ──────────────────────────────────── */
-.ai-chat-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:18px; align-items:start; }
+.ai-chat-grid { display:grid; grid-template-columns:220px minmax(0,1.7fr) minmax(0,1fr); gap:18px; align-items:start; }
+.ai-session-list { background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); padding:16px; display:flex; flex-direction:column; gap:12px; min-height:560px; }
+.ai-session-new { display:flex; align-items:center; justify-content:center; gap:6px; border:1px dashed var(--accent); border-radius:12px; padding:10px; background:var(--accent-soft); color:var(--accent); font-size:12.5px; font-weight:700; cursor:pointer; }
+.ai-session-new:hover { filter:brightness(0.98); }
+.ai-session-new svg { width:14px; height:14px; }
+.ai-session-items { display:flex; flex-direction:column; gap:4px; overflow-y:auto; }
+.ai-session-item { display:flex; flex-direction:column; align-items:flex-start; gap:3px; padding:10px 10px; border-radius:10px; border:0; background:transparent; text-align:left; cursor:pointer; width:100%; }
+.ai-session-item:hover { background:#f7f7fb; }
+.ai-session-item-active { background:var(--accent-soft); }
+.ai-session-item-title { font-size:12.5px; font-weight:600; color:var(--ink); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.4; }
+.ai-session-item-meta { font-size:11px; color:#9aa3b5; }
 .ai-chat-panel { background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); padding:22px 24px; display:flex; flex-direction:column; min-height:560px; }
 .ai-chat-intro { display:flex; align-items:center; gap:14px; padding-bottom:20px; border-bottom:1px solid var(--line); margin-bottom:20px; }
 .ai-chat-intro h3 { margin:0 0 3px; font-size:16px; font-weight:800; }
@@ -405,7 +415,7 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-chat-avatar-user { background:#eef0f4; color:#6b7386; width:34px; height:34px; }
 .ai-chat-messages { display:grid; gap:6px; flex:1 1 auto; margin-bottom:20px; }
 .ai-message { display:flex; align-items:flex-start; gap:12px; }
-.ai-message-user { flex-direction:row-reverse; }
+.ai-message-user { justify-content:flex-end; }
 .ai-bubble { max-width:78%; border-radius:16px; padding:14px 18px; font-size:13.5px; line-height:1.65; }
 .ai-bubble-user { background:var(--accent); color:#fff; border-top-right-radius:4px; }
 .ai-bubble-answer { background:#f5f4ff; color:var(--ink); border-top-left-radius:4px; width:100%; }
@@ -428,6 +438,8 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-suggestion-button svg { width:13px; height:13px; }
 .ai-suggestion-warn { background:var(--warning-bg); color:var(--warning); border-color:transparent; }
 .ai-suggestion-stop { background:var(--danger-bg); color:var(--danger); border-color:transparent; }
+.ai-suggestion-followup { background:var(--accent-soft); color:var(--accent); border-color:transparent; }
+.ai-followups { background:#fff; }
 .ai-chat-input-row { display:flex; align-items:center; gap:10px; border:1px solid var(--line); border-radius:14px; padding:8px 8px 8px 16px; margin-top:auto; }
 .ai-chat-input-row input { flex:1 1 auto; border:0; padding:8px 0; min-height:auto; background:transparent; }
 .ai-chat-input-row input:focus { outline:none; }

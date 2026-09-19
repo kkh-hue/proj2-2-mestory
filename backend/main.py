@@ -20,6 +20,7 @@ from .db import (
     get_report,
     init_db,
     list_alerts,
+    list_chat_sessions,
     list_chat_turns,
     list_equipment_status,
     list_reports,
@@ -193,7 +194,15 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
 
 # ─────────────────────────────────────────────
 # 대화·리포트 조회 (F-07) — 값은 backend/db.py(Postgres)에서 온다.
+# ⚠️ /chat/sessions는 /chat/{session_id}보다 먼저 와야 한다 — 안 그러면
+#    "sessions"가 session_id로 매칭돼 버린다.
 # ─────────────────────────────────────────────
+@app.get("/chat/sessions")
+async def get_chat_sessions(limit: int = 30) -> list[dict]:
+    """AI 원인분석 화면 왼쪽 세션 목록용 — 세션별 첫 질문·마지막 활동 시각."""
+    return await list_chat_sessions(limit)
+
+
 @app.get("/chat/{session_id}")
 async def get_chat_history(session_id: str) -> list[dict]:
     """AI 원인분석 대화형 화면이 새로고침/재방문 때 이전 대화를 그대로 불러오는 곳."""

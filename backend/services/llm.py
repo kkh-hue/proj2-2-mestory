@@ -760,10 +760,16 @@ async def generate_report(
         await save_report(report_id, report, session_id)
 
     if session_id:
-        # ⚠️ 대화 기록에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
+        # ⚠️ 대화 기록(content)에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
         #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
         #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).
-        await save_message(session_id, "user", history_text)
-        await save_message(session_id, "assistant", report.model_dump_json(), report_id=report_id)
+        #    content는 LLM이 다음 턴에 참고할 전체 프롬프트/JSON 그대로 두고,
+        #    display_content만 화면에 보여줄 짧은 문장으로 따로 저장한다 —
+        #    안 그러면 새로고침 후 채팅창에 원본 프롬프트·리포트 JSON이 그대로 노출된다.
+        await save_message(session_id, "user", history_text, display_content=message)
+        await save_message(
+            session_id, "assistant", report.model_dump_json(),
+            report_id=report_id, display_content=report.recommended_action,
+        )
 
     return report
