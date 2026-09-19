@@ -2,6 +2,7 @@
 
 // 다운타임 분석 — 조건(기간·라인·설비·상태)에 맞는 정지를 원인(에러코드)별로 집계해 보여 준다.
 // 데이터는 GET /downtime/analysis (docs/specs/downtime-analysis.md). LLM 원인 분석은 "분석 실행"(/downtime/report).
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import DateField from "../../components/DateField";
 import FilterCard from "../../components/FilterCard";
@@ -129,10 +130,10 @@ export default function DowntimeAnalysisPage() {
         title="다운타임 분석"
         subtitle="설비별 다운타임 원인과 발생 현황을 분석하여 가동률 향상에 활용하세요."
         action={
-          <a href="/downtime/report" className="new-analysis-button">
+          <Link href="/downtime/report" className="new-analysis-button">
             <IconPlus />
             분석 실행
-          </a>
+          </Link>
         }
       />
 

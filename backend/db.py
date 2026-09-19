@@ -259,6 +259,13 @@ def _today_kst() -> date:
     return datetime.now(_KST).date()
 
 
+def _kst_midnight(day: date) -> datetime:
+    """reports.created_at은 timestamptz라 date를 그대로 비교하면 DB 세션 시간대(UTC) 자정으로 잘려
+    KST 00~09시에 만든 리포트가 "어제"로 집계된다. downtime_log의 timestamp(시간대 없음)는
+    시뮬레이션 데이터가 이미 한국 시각이라 date로 비교해도 맞다 — 리포트 쪽만 KST 경계를 명시한다."""
+    return datetime(day.year, day.month, day.day, tzinfo=_KST)
+
+
 def _delta(today: float, yesterday: float) -> dict:
     """"전일 대비" 배지 하나를 만든다. 어제 값이 0이면 방향을 판단할 기준이 없어 0%로 둔다."""
     if yesterday == 0:
@@ -314,7 +321,10 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                     count(*) filter (where created_at >= %s and created_at < %s)
                 from reports
                 """,
-                (day_start, day_end, yesterday_start, day_start),
+                (
+                    _kst_midnight(day_start), _kst_midnight(day_end),
+                    _kst_midnight(yesterday_start), _kst_midnight(day_start),
+                ),
             )
             today_reports, yesterday_reports = await reports_cur.fetchone()
 
@@ -354,7 +364,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 "select id, equipment_id, line_id, period, causes, unclassified_count, "
                 "       confidence_note, recommended_action, visual_findings, used_image, created_at "
                 "from reports where created_at < %s order by created_at desc limit 1",
-                (day_end,),
+                (_kst_midnight(day_end),),
             )
             latest_report_row = await latest_report_cur.fetchone()
     except Exception as exc:
@@ -560,7 +570,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                        (created_at >= %s) as is_recent
                 from reports where created_at < %s order by created_at desc limit %s
                 """,
-                (recent_start, day_end, limit),
+                (_kst_midnight(recent_start), _kst_midnight(day_end), limit),
             )
             report_rows = await report_cur.fetchall()
     except Exception as exc:
