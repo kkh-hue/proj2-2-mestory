@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
@@ -174,6 +175,26 @@ async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessag
     return messages
 
 
+def legacy_display_text(role: str, content: str) -> str:
+    """display_content 칸이 생기기 전에 저장된 행(값이 NULL)을 화면용 문장으로 복원한다.
+
+    DB를 고쳐 쓰지 않고 읽을 때만 원문에서 뽑아낸다 — content는 LLM 맥락용이라 건드리면 안 된다.
+    """
+    if role == "user":
+        question = re.search(r"사용자 질문: (.+?)\n위 질문에 특히", content, re.S)
+        if question:
+            return question.group(1).strip()
+        cond = re.search(r"- 기간: (.+)\n- 라인: (.+)\n- 설비: (.+)", content)
+        if cond:
+            return f"{cond.group(1).strip()} · {cond.group(2).strip()} · {cond.group(3).strip()} 원인 분석 요청"
+        return content
+    try:
+        action = json.loads(content).get("recommended_action")
+    except (ValueError, AttributeError):
+        return content
+    return action or "원인 분석 리포트가 생성되었습니다."
+
+
 async def list_chat_turns(session_id: str) -> list[dict]:
     """화면에 그대로 뿌릴 수 있는 형태로 대화 턴을 돌려준다 (assistant 턴은 report도 같이 붙인다)."""
     try:
@@ -196,7 +217,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
     turns: list[dict] = []
     for (role, content, display_content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
          unclassified_count, confidence_note, recommended_action, visual_findings, used_image) in rows:
-        turn: dict = {"role": role, "content": display_content or content, "created_at": created_at.isoformat()}
+        turn: dict = {"role": role, "content": display_content or legacy_display_text(role, content), "created_at": created_at.isoformat()}
         if report_id and r_id:
             turn["report"] = {
                 "id": r_id,
@@ -227,12 +248,19 @@ async def list_chat_sessions(limit: int = 30) -> list[dict]:
                     max(m.created_at) as last_active,
                     count(*) filter (where m.role = 'user') as turn_count,
                     (
-                        select coalesce(m2.display_content, m2.content)
+                        select m2.display_content
                         from chat_messages m2
                         where m2.session_id = m.session_id and m2.role = 'user'
                         order by m2.created_at asc
                         limit 1
-                    ) as title
+                    ) as title,
+                    (
+                        select m2.content
+                        from chat_messages m2
+                        where m2.session_id = m.session_id and m2.role = 'user'
+                        order by m2.created_at asc
+                        limit 1
+                    ) as first_content
                 from chat_messages m
                 group by m.session_id
                 order by max(m.created_at) desc
@@ -248,12 +276,12 @@ async def list_chat_sessions(limit: int = 30) -> list[dict]:
     return [
         {
             "session_id": session_id,
-            "title": title,
+            "title": title or (legacy_display_text("user", first_content) if first_content else None),
             "started_at": started_at.isoformat(),
             "last_active": last_active.isoformat(),
             "turn_count": turn_count,
         }
-        for session_id, started_at, last_active, turn_count, title in rows
+        for session_id, started_at, last_active, turn_count, title, first_content in rows
     ]
 
 
