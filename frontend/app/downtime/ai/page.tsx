@@ -20,11 +20,17 @@ import type { EquipmentSummaryItem } from "../../../types/equipment";
 
 const SESSION_STORAGE_KEY = "mestory:ai-chat-session-id";
 
+// crypto.randomUUID는 HTTPS/localhost 같은 보안 컨텍스트에서만 있다 — http://사내IP 로 열면
+// 정의되지 않아 화면이 통째로 깨지므로 대체값을 둔다.
+function makeSessionId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `session-${Date.now()}`;
+}
+
 function loadOrCreateSessionId(): string {
   if (typeof window === "undefined") return "";
   const existing = window.localStorage.getItem(SESSION_STORAGE_KEY);
   if (existing) return existing;
-  const created = crypto.randomUUID();
+  const created = makeSessionId();
   window.localStorage.setItem(SESSION_STORAGE_KEY, created);
   return created;
 }
@@ -46,7 +52,8 @@ function buildFollowUps(report: DowntimeReport): { label: string; question: stri
     return (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3);
   });
   const top = bySeverity[0];
-  if (top) {
+  // 에러코드가 비어 있는 원인("판정 불가")은 " 조치 방법…"처럼 이름 없는 버튼이 되므로 제외한다.
+  if (top?.error_code?.trim()) {
     suggestions.push({
       label: `${top.error_code} 조치 방법 더 알려줘`,
       question: `${top.error_code} 원인에 대한 구체적인 조치 방법을 더 자세히 알려줘`,
@@ -77,6 +84,8 @@ export default function AiAnalysisChatPage() {
   const [reviewNeeded, setReviewNeeded] = useState<EquipmentSummaryItem[]>([]);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 지금 화면에 보이는 세션. 응답이 늦게 도착했을 때 "그 사이 다른 대화로 옮겼는지" 판단하는 기준이다.
+  const activeSessionRef = useRef("");
 
   function refreshSessions() {
     listChatSessions()
@@ -85,20 +94,23 @@ export default function AiAnalysisChatPage() {
   }
 
   function loadSession(id: string) {
+    activeSessionRef.current = id;
     setSessionId(id);
     window.localStorage.setItem(SESSION_STORAGE_KEY, id);
     setHydrating(true);
     setError("");
+    // 세션을 빠르게 갈아타면 먼저 요청한 대화 기록이 늦게 도착해 현재 화면을 덮어쓸 수 있다.
+    const isCurrent = () => activeSessionRef.current === id;
     getChatHistory(id)
-      .then(setTurns)
-      .catch(() => setTurns([]))
-      .finally(() => setHydrating(false));
+      .then((history) => isCurrent() && setTurns(history))
+      .catch(() => isCurrent() && setTurns([]))
+      .finally(() => isCurrent() && setHydrating(false));
   }
 
   function startNewSession() {
-    const created = crypto.randomUUID();
+    if (loading) return;
     setTurns([]);
-    loadSession(created);
+    loadSession(makeSessionId());
   }
 
   useEffect(() => {
@@ -126,6 +138,7 @@ export default function AiAnalysisChatPage() {
     const question = rawQuestion.trim();
     if (!question || loading || !sessionId) return;
 
+    const askedSession = sessionId;
     setInput("");
     setError("");
     const askedAt = new Date().toISOString();
@@ -133,17 +146,22 @@ export default function AiAnalysisChatPage() {
     setLoading(true);
 
     try {
-      const { report, reportId } = await createReportWithId({ session_id: sessionId, message: question });
+      const { report, reportId } = await createReportWithId({ session_id: askedSession, message: question });
+      refreshSessions();
+      // 분석하는 동안 다른 대화로 옮겼다면 그 대화 화면에 이 답변을 끼워 넣지 않는다
+      // (답변은 이미 서버에 저장됐으므로 원래 대화로 돌아오면 보인다).
+      if (activeSessionRef.current !== askedSession) return;
       const savedReport: SavedReport | undefined = reportId
-        ? { ...report, id: reportId, session_id: sessionId, created_at: new Date().toISOString() }
+        ? { ...report, id: reportId, session_id: askedSession, created_at: new Date().toISOString() }
         : undefined;
       setTurns((prev) => [
         ...prev,
         { role: "assistant", content: report.recommended_action, created_at: new Date().toISOString(), report: savedReport },
       ]);
-      refreshSessions();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다.");
+      if (activeSessionRef.current === askedSession) {
+        setError(cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다.");
+      }
     } finally {
       setLoading(false);
     }
@@ -156,7 +174,7 @@ export default function AiAnalysisChatPage() {
 
   return (
     <main className="page">
-      <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." date="2026.09.18" />
+      <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." />
 
       <div className="ai-chat-grid">
         <aside className="ai-session-list">
@@ -170,6 +188,7 @@ export default function AiAnalysisChatPage() {
                 key={s.session_id}
                 type="button"
                 className={`ai-session-item ${s.session_id === sessionId ? "ai-session-item-active" : ""}`}
+                disabled={loading}
                 onClick={() => loadSession(s.session_id)}
               >
                 <span className="ai-session-item-title">{s.title || "새 대화"}</span>
