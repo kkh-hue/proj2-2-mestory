@@ -5,15 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import { listEquipment } from "../lib/api";
 import { todayKst } from "../lib/date";
 import type { EquipmentSummaryItem } from "../types/equipment";
-import { IconCalendar, IconEquipment, IconFolder, IconPlus, IconTarget, IconX } from "./icons";
-
-const SCOPES = ["전체 원인", "전기", "기계", "공정"] as const;
+import { IconCalendar, IconEquipment, IconFolder, IconPlus, IconX } from "./icons";
 
 export default function NewAnalysisModal() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<(typeof SCOPES)[number]>("전체 원인");
-  const [memo, setMemo] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [lineId, setLineId] = useState("");
@@ -131,38 +127,6 @@ export default function NewAnalysisModal() {
                     ))}
                   </select>
                   {optionsError && <span className="form-error">라인·설비 목록을 불러오지 못했습니다.</span>}
-                </div>
-
-                <div className="modal-field">
-                  <span className="modal-field-label">
-                    <IconTarget /> 분석 범위
-                  </span>
-                  <div className="scope-options">
-                    {SCOPES.map((option) => (
-                      <button
-                        type="button"
-                        key={option}
-                        className={`scope-option${scope === option ? " active" : ""}`}
-                        onClick={() => setScope(option)}
-                      >
-                        <span className="scope-radio" />
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="modal-field">
-                  <span className="modal-field-label">
-                    <IconTarget /> 메모 (선택)
-                  </span>
-                  <textarea
-                    placeholder="메모를 입력하세요."
-                    maxLength={500}
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                  />
-                  <span className="modal-char-count">{memo.length}/500</span>
                 </div>
               </div>
 
