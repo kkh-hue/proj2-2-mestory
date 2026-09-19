@@ -10,9 +10,10 @@ import { useEffect, useRef, useState } from "react";
 import CauseBreakdown from "../../../components/CauseBreakdown";
 import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
-import { IconReport, IconRobot, IconSend, IconUser } from "../../../components/icons";
-import { createReportWithId, getChatHistory } from "../../../lib/api";
+import { IconReport, IconRobot, IconSend, IconStopCircle, IconTriangleWarning, IconUser } from "../../../components/icons";
+import { createReportWithId, getChatHistory, listEquipment } from "../../../lib/api";
 import type { ChatTurn, SavedReport } from "../../../types/report";
+import type { EquipmentSummaryItem } from "../../../types/equipment";
 
 const SESSION_STORAGE_KEY = "mestory:ai-chat-session-id";
 
@@ -40,6 +41,7 @@ export default function AiAnalysisChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hydrating, setHydrating] = useState(true);
+  const [reviewNeeded, setReviewNeeded] = useState<EquipmentSummaryItem[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -52,15 +54,22 @@ export default function AiAnalysisChatPage() {
       .finally(() => setHydrating(false));
   }, []);
 
+  // 사용자가 57대 설비 상태를 일일이 파악할 수 없으니, 확인이 필요한(정상이 아닌)
+  // 설비만 추려 버튼으로 먼저 보여준다 — 설비관리 화면과 같은 status 값을 그대로 쓴다.
+  useEffect(() => {
+    listEquipment()
+      .then((items) => setReviewNeeded(items.filter((item) => item.status !== "정상")))
+      .catch(() => setReviewNeeded([]));
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [turns, loading]);
 
   const lastReport: SavedReport | undefined = [...turns].reverse().find((t) => t.report)?.report;
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    const question = input.trim();
+  async function submitQuestion(rawQuestion: string) {
+    const question = rawQuestion.trim();
     if (!question || loading || !sessionId) return;
 
     setInput("");
@@ -85,6 +94,11 @@ export default function AiAnalysisChatPage() {
     }
   }
 
+  function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    void submitQuestion(input);
+  }
+
   return (
     <main className="page">
       <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." date="2026.09.18" />
@@ -103,7 +117,28 @@ export default function AiAnalysisChatPage() {
 
           <div className="ai-chat-messages">
             {!hydrating && turns.length === 0 && (
-              <p className="helper-text">예: "EQ-021 프레스 라인의 다운타임 원인을 요약해줘"처럼 물어보세요.</p>
+              <>
+                <p className="helper-text">예: "EQ-021 프레스 라인의 다운타임 원인을 요약해줘"처럼 물어보세요.</p>
+                {reviewNeeded.length > 0 && (
+                  <div className="ai-suggestions">
+                    <span className="ai-suggestions-label">확인이 필요한 설비</span>
+                    <div className="ai-suggestion-list">
+                      {reviewNeeded.map((item) => (
+                        <button
+                          key={item.equipment_id}
+                          type="button"
+                          className={`ai-suggestion-button ${item.status === "정지" ? "ai-suggestion-stop" : "ai-suggestion-warn"}`}
+                          disabled={loading}
+                          onClick={() => void submitQuestion(`${item.equipment_id} ${item.equipment_type} 다운타임 원인을 분석해줘`)}
+                        >
+                          {item.status === "정지" ? <IconStopCircle /> : <IconTriangleWarning />}
+                          {item.equipment_id}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {turns.map((turn, index) =>
