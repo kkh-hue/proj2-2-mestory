@@ -13,16 +13,18 @@ export const TAB_DEFS = [
 
 export type TabKey = (typeof TAB_DEFS)[number]["key"];
 
-function isToday(iso: string) {
+// "오늘"은 실제 오늘이 아니라 화면에서 고른 기준일(asOf, YYYY-MM-DD)이다 —
+// 다른 날짜를 골랐는데 실제 오늘과 비교하면 "오늘" 탭이 항상 비어 버린다.
+function isSameDay(iso: string, asOf: string) {
   const date = new Date(iso);
-  const now = new Date();
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+  const local = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return local === asOf;
 }
 
-export function matchesTab(alert: AlertItem, tab: TabKey) {
+export function matchesTab(alert: AlertItem, tab: TabKey, asOf: string) {
   if (tab === "all") return true;
   if (tab === "unread") return alert.unread;
-  if (tab === "today") return isToday(alert.date);
+  if (tab === "today") return isSameDay(alert.date, asOf);
   if (tab === "downtime") return (["critical", "warning"] as AlertTone[]).includes(alert.tone);
   if (tab === "analysis") return alert.tone === "analysis";
   return true;
@@ -30,14 +32,16 @@ export function matchesTab(alert: AlertItem, tab: TabKey) {
 
 export default function AlertBoard({
   items,
+  asOf,
   active,
   onActiveChange,
 }: {
   items: AlertItem[];
+  asOf: string;
   active: TabKey;
   onActiveChange: (tab: TabKey) => void;
 }) {
-  const visible = items.filter((item) => matchesTab(item, active));
+  const visible = items.filter((item) => matchesTab(item, active, asOf));
 
   return (
     <>
@@ -49,7 +53,7 @@ export default function AlertBoard({
             className={`alert-tab${active === tab.key ? " active" : ""}`}
             onClick={() => onActiveChange(tab.key)}
           >
-            {tab.label} <span className="alert-tab-count">{items.filter((item) => matchesTab(item, tab.key)).length}</span>
+            {tab.label} <span className="alert-tab-count">{items.filter((item) => matchesTab(item, tab.key, asOf)).length}</span>
           </button>
         ))}
       </div>

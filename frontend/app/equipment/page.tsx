@@ -22,11 +22,16 @@ export default function EquipmentPage() {
   const [asOf, setAsOf] = useState(todayISO());
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError("");
     listEquipment(asOf)
-      .then(setItems)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .then((data) => !cancelled && setItems(data))
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [asOf]);
 
   const okCount = items.filter((item) => item.status === "정상").length;

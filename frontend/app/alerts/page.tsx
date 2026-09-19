@@ -22,15 +22,20 @@ export default function AlertsPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("all");
 
   useEffect(() => {
+    let cancelled = false; // 날짜를 빠르게 바꿀 때 늦게 도착한 이전 응답이 덮어쓰지 않게
     setLoading(true);
+    setError(""); // 한 번 실패한 뒤 다른 날짜를 골라도 오류 화면에 갇히지 않게
     listAlerts(asOf)
-      .then(setAlerts)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "알림을 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .then((data) => !cancelled && setAlerts(data))
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "알림을 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [asOf]);
 
-  const unreadCount = alerts.filter((a) => matchesTab(a, "unread")).length;
-  const todayCount = alerts.filter((a) => matchesTab(a, "today")).length;
+  const unreadCount = alerts.filter((a) => matchesTab(a, "unread", asOf)).length;
+  const todayCount = alerts.filter((a) => matchesTab(a, "today", asOf)).length;
 
   return (
     <main className="page">
@@ -92,7 +97,7 @@ export default function AlertsPage() {
             </button>
           </section>
 
-          <AlertBoard items={alerts} active={activeTab} onActiveChange={setActiveTab} />
+          <AlertBoard items={alerts} asOf={asOf} active={activeTab} onActiveChange={setActiveTab} />
         </>
       )}
     </main>

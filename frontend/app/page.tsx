@@ -61,11 +61,16 @@ export default function DashboardPage() {
   const [asOf, setAsOf] = useState(todayISO());
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError("");
     getDashboard(asOf)
-      .then(setSummary)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
-      .finally(() => setLoading(false));
+      .then((data) => !cancelled && setSummary(data))
+      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [asOf]);
 
   const needsReviewCount = summary?.recent_events.filter((e) => e.severity === "판정 불가").length ?? 0;
