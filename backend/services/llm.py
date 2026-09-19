@@ -766,10 +766,14 @@ async def generate_report(
         #    content는 LLM이 다음 턴에 참고할 전체 프롬프트/JSON 그대로 두고,
         #    display_content만 화면에 보여줄 짧은 문장으로 따로 저장한다 —
         #    안 그러면 새로고침 후 채팅창에 원본 프롬프트·리포트 JSON이 그대로 노출된다.
-        await save_message(session_id, "user", history_text, display_content=message)
+        #    질문 없이 조건만으로 요청하거나 recommended_action이 비면 display_content가
+        #    None이 돼 원본 프롬프트/JSON이 다시 노출되므로, 짧은 대체 문장을 채워 둔다.
+        user_display = message or f"{period} · {line_label} · {equipment_label} 원인 분석 요청"
+        assistant_display = report.recommended_action or "원인 분석 리포트가 생성되었습니다."
+        await save_message(session_id, "user", history_text, display_content=user_display)
         await save_message(
             session_id, "assistant", report.model_dump_json(),
-            report_id=report_id, display_content=report.recommended_action,
+            report_id=report_id, display_content=assistant_display,
         )
 
     return report

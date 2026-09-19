@@ -43,7 +43,7 @@ function buildFollowUps(report: DowntimeReport): { label: string; question: stri
   const suggestions: { label: string; question: string }[] = [];
   const bySeverity = [...report.causes].sort((a, b) => {
     const rank: Record<string, number> = { 중대: 0, 보통: 1, 경미: 2, "판정 불가": 3 };
-    return rank[a.severity] - rank[b.severity];
+    return (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3);
   });
   const top = bySeverity[0];
   if (top) {
