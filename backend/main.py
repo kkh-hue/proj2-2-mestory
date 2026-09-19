@@ -11,6 +11,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import date
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from .db import (
     get_dashboard_summary,
+    get_downtime_analysis,
     get_report,
     init_db,
     list_alerts,
@@ -223,6 +225,21 @@ async def get_dashboard(as_of: date | None = None) -> dict:
     as_of(YYYY-MM-DD)를 주면 그 날짜를 "오늘"로 보고 다시 집계한다 (상단 날짜 선택).
     """
     return await get_dashboard_summary(as_of)
+
+
+@app.get("/downtime/analysis")
+async def get_downtime_analysis_view(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    line_id: str | None = None,
+    equipment_id: str | None = None,
+    status: Literal["all", "closed", "open"] = "all",
+) -> dict:
+    """다운타임 분석 화면용 — 조건에 맞는 정지를 원인(에러코드)별로 집계 (docs/specs/downtime-analysis.md)."""
+    try:
+        return await get_downtime_analysis(date_from, date_to, line_id, equipment_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/alerts")

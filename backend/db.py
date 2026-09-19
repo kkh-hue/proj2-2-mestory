@@ -26,6 +26,8 @@ from typing import Any
 import psycopg
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
+from .analysis import build_analysis, resolve_period
+
 logger = logging.getLogger(__name__)
 
 _SCHEMA_READY = False
@@ -432,6 +434,86 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
         "recent_events": recent_events,
         "latest_report": latest_report,
     }
+
+
+# ─────────────────────────────────────────────
+# 다운타임 분석 화면 — 조건(기간·라인·설비·상태)에 맞는 정지를 에러코드(원인)별로 집계한다.
+# 집계 후처리(상위 N + 기타, 비중)는 backend/analysis.py. 설계: docs/specs/downtime-analysis.md
+# 조회 실패는 다른 화면처럼 빈 값으로 감추지 않고 예외를 올린다 — 0건과 구분돼야 해서.
+# ─────────────────────────────────────────────
+# 종료됐는데 시간이 0 이하/NULL인 행 = 데이터 오류 (scripts/seed_db.py의 함정 데이터)
+_INVALID_DOWNTIME = "(d.end_time is not null and (d.downtime_min is null or d.downtime_min <= 0))"
+
+
+async def get_downtime_analysis(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    line_id: str | None = None,
+    equipment_id: str | None = None,
+    status: str = "all",
+) -> dict:
+    start, end = resolve_period(date_from, date_to, _today_kst())
+
+    conds = ["d.start_time >= %s", "d.start_time < %s"]
+    params: list[Any] = [start, end + timedelta(days=1)]
+    if line_id:
+        conds.append("d.line_id = %s")
+        params.append(line_id)
+    if equipment_id:
+        conds.append("d.equipment_id = %s")
+        params.append(equipment_id)
+    if status == "closed":
+        conds.append("d.end_time is not null")
+    elif status == "open":
+        conds.append("d.end_time is null")
+    where = " and ".join(conds)
+
+    async with await _connect() as conn:
+        cause_cur = await conn.execute(
+            f"""
+            select coalesce(d.error_code, '미상'), ec.description, ec.category,
+                   count(*) filter (where not {_INVALID_DOWNTIME}),
+                   coalesce(sum(d.downtime_min) filter (where d.downtime_min > 0), 0),
+                   max(d.start_time) filter (where not {_INVALID_DOWNTIME})
+            from downtime_log d
+            left join error_code_dict ec on ec.error_code = d.error_code
+            where {where}
+            group by coalesce(d.error_code, '미상'), ec.description, ec.category
+            having count(*) filter (where not {_INVALID_DOWNTIME}) > 0
+            """,
+            params,
+        )
+        cause_rows = await cause_cur.fetchall()
+
+        top_cur = await conn.execute(
+            f"""
+            select d.equipment_id, e.equipment_type,
+                   coalesce(sum(d.downtime_min) filter (where d.downtime_min > 0), 0) as total
+            from downtime_log d
+            left join equipment_master e on e.equipment_id = d.equipment_id
+            where {where}
+            group by d.equipment_id, e.equipment_type
+            order by total desc, d.equipment_id
+            limit 1
+            """,
+            params,
+        )
+        top_row = await top_cur.fetchone()
+
+        review_cur = await conn.execute(
+            f"""
+            select count(*) filter (where {_INVALID_DOWNTIME})
+                 + count(*) filter (where not {_INVALID_DOWNTIME} and ec.error_code is null)
+            from downtime_log d
+            left join error_code_dict ec on ec.error_code = d.error_code
+            where {where}
+            """,
+            params,
+        )
+        (needs_review,) = await review_cur.fetchone()
+
+    top_equipment_row = top_row if top_row and top_row[2] and float(top_row[2]) > 0 else None
+    return build_analysis(cause_rows, top_equipment_row, needs_review or 0, start, end)
 
 
 # ─────────────────────────────────────────────

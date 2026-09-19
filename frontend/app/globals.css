@@ -464,3 +464,9 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
   .shell { display:block; }
   .page { max-width:100%; padding:0; }
 }
+
+/* ── 다운타임 분석 화면 필터/빈 상태 ─────────────────────────── */
+.filter-value select { border:0; padding:0; min-height:auto; background:transparent; font-size:14px; font-weight:700; color:var(--ink); width:100%; cursor:pointer; }
+.filter-value select:focus { outline:none; }
+.analysis-empty { text-align:center; color:var(--muted); padding:32px 0; margin:0; }
+.detail-code { margin-left:8px; font-size:11.5px; font-weight:600; color:var(--muted); }

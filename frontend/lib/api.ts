@@ -2,6 +2,7 @@ import type { ChatTurn, DowntimeReport, ReportRequest, ReportSummary, SavedRepor
 import type { DashboardSummary } from "../types/dashboard";
 import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
+import type { DowntimeAnalysis, DowntimeAnalysisQuery } from "../types/downtimeAnalysis";
 
 export class ReportApiError extends Error {
   constructor(
@@ -119,4 +120,15 @@ export async function listEquipment(asOf?: string): Promise<EquipmentSummaryItem
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as EquipmentSummaryItem[];
+}
+
+export async function getDowntimeAnalysis(query: DowntimeAnalysisQuery): Promise<DowntimeAnalysis> {
+  const params = new URLSearchParams({ date_from: query.date_from, date_to: query.date_to, status: query.status });
+  if (query.line_id) params.set("line_id", query.line_id);
+  if (query.equipment_id) params.set("equipment_id", query.equipment_id);
+  const response = await fetch(`${getBaseUrl()}/downtime/analysis?${params.toString()}`);
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
+  return (await response.json()) as DowntimeAnalysis;
 }
