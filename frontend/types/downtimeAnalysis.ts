@@ -23,6 +23,10 @@ export interface AnalysisCause {
   downtime_min: number;
   percent: number;
   last_occurred: string | null;
+  // error_code_dict의 설명 값 — 사전에 없는 코드면 null
+  typical_cause: string | null;
+  typical_duration_range: string | null;
+  severity_hint: string | null;
 }
 
 export interface DowntimeAnalysis {

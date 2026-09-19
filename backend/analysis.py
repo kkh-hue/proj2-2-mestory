@@ -38,12 +38,14 @@ def build_analysis(
 ) -> dict:
     """DB에서 뽑은 원인별 합계 행들을 화면 응답 모양으로 만든다.
 
-    cause_rows: (error_code, description|None, category|None, count, downtime_min, last_occurred|None)
-        description이 None이면 error_code_dict에 없는 코드다.
+    cause_rows: (error_code, description|None, category|None, count, downtime_min, last_occurred|None
+                 [, typical_cause, typical_duration_min_range, severity_hint])
+        description이 None이면 error_code_dict에 없는 코드다. 뒤의 3개(원인 설명용)는 없어도 된다.
     top_equipment_row: (equipment_id, equipment_type|None, downtime_min) 또는 None
     """
     causes = []
-    for error_code, description, category, count, minutes, last_occurred in cause_rows:
+    for error_code, description, category, count, minutes, last_occurred, *extra in cause_rows:
+        typical_cause, typical_duration, severity_hint = (extra + [None, None, None])[:3]
         causes.append({
             "error_code": error_code,
             "label": description or f"{error_code}{UNREGISTERED_SUFFIX}",
@@ -51,6 +53,9 @@ def build_analysis(
             "count": int(count),
             "downtime_min": float(minutes),
             "last_occurred": last_occurred.isoformat() if isinstance(last_occurred, datetime) else None,
+            "typical_cause": typical_cause,
+            "typical_duration_range": typical_duration,
+            "severity_hint": severity_hint,
         })
     causes.sort(key=lambda c: (-c["downtime_min"], c["error_code"]))
 

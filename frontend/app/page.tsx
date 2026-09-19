@@ -10,18 +10,16 @@ import NewAnalysisModal from "../components/NewAnalysisModal";
 import Topbar from "../components/Topbar";
 import TrendChart from "../components/TrendChart";
 import { getDashboard } from "../lib/api";
+import { todayKst } from "../lib/date";
+import { lineLabel } from "../lib/labels";
 import type { DashboardSummary } from "../types/dashboard";
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 
-function todayISO() {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
 function formatTrendLabel(iso: string) {
-  const date = new Date(iso);
-  return `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}\n(${WEEKDAYS[date.getDay()]})`;
+  // "YYYY-MM-DD"를 new Date()로 읽으면 UTC 자정이라 시간대에 따라 하루 밀린다 — 숫자로 직접 만든다.
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${String(m).padStart(2, "0")}.${String(d).padStart(2, "0")}\n(${WEEKDAYS[new Date(y, m - 1, d).getDay()]})`;
 }
 
 function formatMinutes(min: number) {
@@ -58,7 +56,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [asOf, setAsOf] = useState(todayISO());
+  const [asOf, setAsOf] = useState(todayKst());
 
   useEffect(() => {
     let cancelled = false;
@@ -113,7 +111,7 @@ export default function DashboardPage() {
                   {summary.trend.lines.map((line, index) => (
                     <li key={line.key}>
                       <span className="trend-legend-dot" style={{ background: LINE_COLORS[index % LINE_COLORS.length] }} />
-                      {line.key}
+                      {lineLabel(line.key)}
                     </li>
                   ))}
                 </ul>
@@ -124,7 +122,7 @@ export default function DashboardPage() {
                 <TrendChart
                   labels={summary.trend.labels.map(formatTrendLabel)}
                   lines={summary.trend.lines.map((line, index) => ({
-                    key: line.key, color: LINE_COLORS[index % LINE_COLORS.length], values: line.values,
+                    key: lineLabel(line.key), color: LINE_COLORS[index % LINE_COLORS.length], values: line.values,
                   }))}
                   maxY={Math.max(1, Math.ceil(Math.max(0, ...summary.trend.lines.flatMap((l) => l.values))))}
                 />

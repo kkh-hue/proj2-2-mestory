@@ -4,6 +4,7 @@ LLM 호출은 여기가 아니라 services/ 아래 한곳에 모으세요.
 3차 프로젝트에서 그 자리에 RAG 그래프가 들어옵니다 — 호출부가 흩어져 있으면 그때 전부 뜯어야 합니다.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -21,6 +22,7 @@ from .db import (
     get_dashboard_summary,
     get_downtime_analysis,
     get_report,
+    get_session_scope,
     init_db,
     list_alerts,
     list_chat_sessions,
@@ -28,6 +30,7 @@ from .db import (
     list_equipment_status,
     list_reports,
 )
+from .scope import ScopeError, resolve_scope
 from .services.llm import DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -157,6 +160,34 @@ class ReportRequest(BaseModel):
 # 경로가 두 개인 이유: 가이드 6쪽 공통 배포 구조가 `POST /api/agent`를 요구한다.
 # 기존 `/report`를 쓰는 프론트·연습 스크립트가 있으므로 지우지 않고 둘 다 받는다.
 # (FastAPI의 라우트 데코레이터는 원래 함수를 그대로 돌려주므로 이렇게 겹쳐 쓸 수 있다.)
+async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]] | None:
+    """({설비ID: 라인ID}, {설비ID: 종류}) — CSV/DB 모드 공통. 못 읽으면 None (검증만 건너뛴다)."""
+    try:
+        from mcp_server.tools.data_loader import load_equipment
+
+        frame = await asyncio.to_thread(load_equipment)
+        ids = frame["equipment_id"].astype(str)
+        return (
+            dict(zip(ids, frame["line_id"].astype(str))),
+            dict(zip(ids, frame["equipment_type"].astype(str))),
+        )
+    except Exception as exc:
+        logger.warning("설비 마스터를 읽지 못해 설비 검증을 건너뜁니다: %s", exc)
+        return None
+
+
+async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, str | None]:
+    session_scope = await get_session_scope(request.session_id) if request.message and request.session_id else None
+    master = await _load_equipment_master()
+    try:
+        return resolve_scope(
+            request.message, request.line_id, request.equipment_id,
+            master[0] if master else None, session_scope, master[1] if master else None,
+        )
+    except ScopeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.post("/api/agent", response_model=DowntimeReport)
 @app.post("/report", response_model=DowntimeReport)
 async def create_report(request: ReportRequest, response: Response) -> DowntimeReport:
@@ -170,9 +201,13 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
         request_id, request.line_id, request.equipment_id, request.date_from, request.date_to, image_count,
     )
 
+    # 조회 범위(라인·설비)를 확정한다 — "전체 라인/전체 설비"로 뭉뚱그려 저장하지 않는다.
+    # 질문(message)이 있으면 질문 속 설비·라인과 세션의 이전 범위도 쓴다. docs/specs/report-scope.md
+    line_id, equipment_id = await _resolve_request_scope(request)
+
     report = await generate_report(
-        line_id=request.line_id,
-        equipment_id=request.equipment_id,
+        line_id=line_id,
+        equipment_id=equipment_id,
         date_from=request.date_from,
         date_to=request.date_to,
         session_id=request.session_id,

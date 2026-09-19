@@ -694,7 +694,7 @@ async def generate_report(
         보기"가 재조회 없이 바로 이 리포트를 가리킬 수 있게 한다.
     """
     period = f"{date_from or '전체'} ~ {date_to or '전체'}"
-    equipment_label = equipment_id or "전체 설비"
+    equipment_label = equipment_id or (f"{line_id} 전체 설비" if line_id else "전체 설비")
     line_label = line_id or "전체 라인"
 
     has_images = bool(images)

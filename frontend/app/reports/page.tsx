@@ -4,11 +4,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReportListCard from "../../components/ReportListCard";
 import Topbar from "../../components/Topbar";
 import { IconChevronDown, IconChevronRight, IconPlus, IconReport, IconSearch } from "../../components/icons";
-import { listReports } from "../../lib/api";
+import { listEquipment, listReports } from "../../lib/api";
+import { reportScope } from "../../lib/labels";
+import type { EquipmentSummaryItem } from "../../types/equipment";
 import type { ReportSummary } from "../../types/report";
 
 function formatShortDate(iso: string) {
@@ -22,15 +24,29 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<ReportSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
 
   useEffect(() => {
+    listEquipment().then(setEquipment).catch(() => {}); // 이름을 못 불러와도 ID로 표시된다
     listReports()
       .then(setReports)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   }, []);
 
+  const [query, setQuery] = useState("");
+  const [newestFirst, setNewestFirst] = useState(true);
+
   const recent = reports.slice(0, 5);
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? reports.filter((r) =>
+          [r.line_id, r.equipment_id, reportScope(r, equipment), r.recommended_action, r.period].some((v) => v?.toLowerCase().includes(q)),
+        )
+      : reports;
+    return newestFirst ? filtered : [...filtered].reverse();
+  }, [reports, query, newestFirst, equipment]);
 
   return (
     <main className="page">
@@ -41,7 +57,7 @@ export default function ReportsPage() {
           <>
             <label className="search-box">
               <IconSearch />
-              <input type="text" placeholder="리포트 검색" aria-label="리포트 검색" />
+              <input type="text" placeholder="리포트 검색" aria-label="리포트 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
             </label>
             <Link href="/downtime/ai" className="new-analysis-button">
               <IconPlus />
@@ -67,20 +83,22 @@ export default function ReportsPage() {
         <div className="reports-grid">
           <section>
             <div className="reports-list-head">
-              <h3>전체 리포트 ({reports.length})</h3>
-              <span className="sort-select">
-                최신순
+              <h3>전체 리포트 ({visible.length})</h3>
+              <button type="button" className="sort-select" onClick={() => setNewestFirst((v) => !v)} aria-label="정렬 순서 바꾸기">
+                {newestFirst ? "최신순" : "오래된순"}
                 <IconChevronDown className="filter-chevron" />
-              </span>
+              </button>
             </div>
             {reports.length === 0 ? (
               <p className="no-causes">
                 아직 생성된 리포트가 없습니다. "AI 원인분석" 화면에서 질문하면 여기에 쌓입니다.
               </p>
+            ) : visible.length === 0 ? (
+              <p className="no-causes">검색 결과가 없습니다.</p>
             ) : (
               <div className="report-list">
-                {reports.map((report, index) => (
-                  <ReportListCard report={report} highlight={index === 0} key={report.id} />
+                {visible.map((report, index) => (
+                  <ReportListCard report={report} highlight={index === 0} equipment={equipment} key={report.id} />
                 ))}
               </div>
             )}
@@ -100,7 +118,7 @@ export default function ReportsPage() {
                       <IconReport />
                     </span>
                     <div className="shared-report-body">
-                      <span className="shared-report-name">{report.line_id} · {report.equipment_id}</span>
+                      <span className="shared-report-name">{reportScope(report, equipment)}</span>
                       <span className="shared-report-title">{report.recommended_action}</span>
                       <span className="shared-report-date">{formatShortDate(report.created_at)}</span>
                     </div>

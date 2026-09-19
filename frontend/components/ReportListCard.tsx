@@ -1,5 +1,10 @@
 import Link from "next/link";
-import { IconCalendar, IconChart, IconDownload, IconEye, IconMoreHorizontal, IconReport } from "./icons";
+import { useState } from "react";
+import { getReport } from "../lib/api";
+import { reportScope, reportTitle } from "../lib/labels";
+import type { EquipmentSummaryItem } from "../types/equipment";
+import { downloadCsv } from "../lib/reportCsv";
+import { IconCalendar, IconChart, IconDownload, IconEye, IconReport } from "./icons";
 import type { ReportSummary } from "../types/report";
 
 function formatDate(iso: string) {
@@ -9,8 +14,29 @@ function formatDate(iso: string) {
   ).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export default function ReportListCard({ report, highlight }: { report: ReportSummary; highlight?: boolean }) {
+export default function ReportListCard({
+  report,
+  highlight,
+  equipment,
+}: {
+  report: ReportSummary;
+  highlight?: boolean;
+  equipment: EquipmentSummaryItem[];
+}) {
   const detailHref = `/reports/${report.id}`;
+  const [downloading, setDownloading] = useState(false);
+
+  // 목록 응답에는 causes가 없어서 상세를 받아 CSV로 저장한다.
+  async function download() {
+    setDownloading(true);
+    try {
+      downloadCsv(await getReport(report.id));
+    } catch {
+      window.alert("리포트를 다운로드하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <article className="report-list-card">
@@ -19,12 +45,9 @@ export default function ReportListCard({ report, highlight }: { report: ReportSu
       </div>
       <div className="report-list-body">
         <div className="report-list-top">
-          <h4>{report.line_id} · {report.equipment_id} 원인 분석 리포트</h4>
+          <h4>{reportTitle(report, equipment)}</h4>
           <div className="report-list-top-actions">
             <span className="status-pill status-pill-complete">분석 완료</span>
-            <button type="button" className="icon-button" aria-label="더보기">
-              <IconMoreHorizontal />
-            </button>
           </div>
         </div>
         <div className="report-list-meta">
@@ -32,18 +55,18 @@ export default function ReportListCard({ report, highlight }: { report: ReportSu
             <IconCalendar /> {formatDate(report.created_at)}
           </span>
           <span>
-            <IconChart /> {report.line_id}
+            <IconChart /> {reportScope(report, equipment)}
           </span>
-          <span className="report-list-tag">{report.equipment_id}</span>
+          <span className="report-list-tag">{report.period}</span>
         </div>
         <p className="report-list-desc">{report.recommended_action}</p>
         <div className="report-list-actions">
           <Link href={detailHref} className="secondary-button">
             <IconEye /> 보기
           </Link>
-          <Link href={detailHref} className="primary-button primary-button-inline">
-            <IconDownload /> 다운로드
-          </Link>
+          <button type="button" className="primary-button primary-button-inline" onClick={download} disabled={downloading}>
+            <IconDownload /> {downloading ? "준비 중..." : "다운로드"}
+          </button>
         </div>
       </div>
     </article>

@@ -146,20 +146,21 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .filter-value input:focus { outline:none; }
 .filter-date-range { display:flex; align-items:center; gap:6px; }
 .filter-date-range input { flex:1 1 0; min-width:0; }
-.filter-date-range span { color:var(--muted); font-weight:700; }
+.filter-date-range > span:not(.date-field) { color:var(--muted); font-weight:700; }
 
 /* ── 원인별 분석(막대) ───────────────────────────────────────── */
 .cause-breakdown-card .no-causes { display:flex; align-items:center; gap:8px; }
 .cause-breakdown-card,.insight-panel { background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); padding:22px 24px; }
 .card-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
 .card-head-note { font-size:11.5px; color:var(--muted); font-weight:600; }
-.breakdown-list { list-style:none; margin:0; padding:0; display:grid; gap:16px; }
+.breakdown-list { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
 .breakdown-list li { display:flex; align-items:center; gap:14px; }
 .breakdown-icon { width:34px; height:34px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; flex:0 0 auto; }
 .breakdown-icon svg { width:16px; height:16px; }
 .breakdown-main { flex:1 1 auto; min-width:0; }
 .breakdown-top { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
-.breakdown-code { font-weight:800; font-size:13px; }
+.breakdown-code { font-weight:800; font-size:13px; flex:0 0 auto; }
+.breakdown-list li > .severity-badge { flex:0 0 auto; }
 .breakdown-desc { color:#5b667c; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .breakdown-meter-track { display:block; height:8px; border-radius:99px; background:#f0f1f6; overflow:hidden; }
 .breakdown-meter-fill { display:block; height:100%; border-radius:99px; }
@@ -485,3 +486,23 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .filter-value select:focus { outline:none; }
 .analysis-empty { text-align:center; color:var(--muted); padding:32px 0; margin:0; }
 .detail-code { margin-left:8px; font-size:11.5px; font-weight:600; color:var(--muted); }
+
+/* 달력 아이콘 버튼 — 눌러서 날짜 선택 달력을 연다 */
+.date-icon-button, .filter-icon-button { border:0; padding:0; font:inherit; cursor:pointer; display:inline-grid; place-items:center; color:inherit; background:transparent; }
+.filter-icon-button { background:var(--accent-soft); color:var(--accent); }
+.filter-icon-button:hover { filter:brightness(0.95); }
+.sort-select { cursor:pointer; background:transparent; border:0; padding:0; font-family:inherit; }
+
+/* 날짜 입력 — 앞쪽 아이콘 버튼으로 달력을 열기 때문에 브라우저 기본(뒤쪽) 달력 아이콘은 숨긴다 */
+.date-field { display:inline-flex; align-items:center; gap:6px; }
+.date-field .date-icon-button svg { width:15px; height:15px; }
+input[type="date"]::-webkit-calendar-picker-indicator { display:none; }
+.filter-date-range .date-field { flex:1 1 0; min-width:0; }
+.filter-date-range .date-field input { font-size:13px; min-width:0; }
+
+/* 다운타임 원인 설명 모달 */
+.cause-info-panel { max-width:560px; }
+.cause-info-stats { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; background:var(--accent-soft); border-radius:16px; padding:16px 18px; margin-bottom:18px; }
+.cause-info-list { margin:0; display:grid; gap:14px; }
+.cause-info-list dt { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:4px; }
+.cause-info-list dd { margin:0; font-size:14px; font-weight:600; color:var(--ink); line-height:1.5; }
