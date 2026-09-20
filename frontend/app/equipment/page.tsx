@@ -38,7 +38,7 @@ export default function EquipmentPage() {
   const summary = [
     { key: "total", label: "전체 설비", value: `${items.length}대`, note: "등록된 전체 설비 수", Icon: IconReport, tone: "tone-purple" },
     { key: "ok", label: "정상 가동", value: `${okCount}대`, note: "정상적으로 가동 중인 설비", Icon: IconCheck, tone: "tone-ok" },
-    { key: "warn", label: "점검 필요", value: `${warnCount}대`, note: "최근 7일 내 다운타임이 있었던 설비", Icon: IconTriangleWarning, tone: "tone-warn" },
+    { key: "warn", label: "점검 필요", value: `${warnCount}대`, note: "최근 7일 가동률 95% 미만인 설비", Icon: IconTriangleWarning, tone: "tone-warn" },
     { key: "stop", label: "정지", value: `${stopCount}대`, note: "현재 정지 상태인 설비", Icon: IconStopCircle, tone: "tone-stop" },
   ] as const;
 

@@ -55,6 +55,7 @@ class _Cursor:
 class _Connection:
     def __init__(self, query_rows):
         self.query_rows = iter(query_rows)
+        self.queries = []
 
     async def __aenter__(self):
         return self
@@ -63,6 +64,7 @@ class _Connection:
         return False
 
     async def execute(self, *args):
+        self.queries.append(args)
         return _Cursor(next(self.query_rows))
 
 
@@ -72,9 +74,9 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     start = datetime(2026, 9, 19, 9, 0)
     report_created = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
     downtime_rows = [
-        ("LOG-NORMAL", "EQ-001", "LINE-A", "E-101", start, False, True, "프레스", "정상 설비 이벤트"),
-        ("LOG-WARNING", "EQ-002", "LINE-A", "E-102", start, False, True, "프레스", "주의 설비 이벤트"),
-        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, "프레스", "정지 설비 이벤트"),
+        ("LOG-NORMAL", "EQ-001", "LINE-A", "E-101", start, False, True, "프레스", "LINE-A", "정상 설비 이벤트"),
+        ("LOG-WARNING", "EQ-002", "LINE-LOG", "E-102", start, False, True, "프레스", "LINE-MASTER", "주의 설비 이벤트"),
+        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, False, True, "프레스", "LINE-A", "정지 설비 이벤트"),
     ]
     report_rows = [
         ("report-1", "EQ-001", "LINE-A", "조치 확인", report_created, True, "프레스", "LINE-A"),
@@ -96,5 +98,33 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
 
     assert "downtime-LOG-NORMAL" not in by_id
     assert (by_id["downtime-LOG-WARNING"]["tone"], by_id["downtime-LOG-WARNING"]["tag"]) == ("warning", "주의")
+    assert by_id["downtime-LOG-WARNING"]["line_id"] == "LINE-MASTER"
+    assert "MASTER라인" in by_id["downtime-LOG-WARNING"]["title"]
     assert (by_id["downtime-LOG-STOPPED"]["tone"], by_id["downtime-LOG-STOPPED"]["tag"]) == ("critical", "긴급")
+    assert "진행 중입니다" in by_id["downtime-LOG-STOPPED"]["description"]
     assert (by_id["report-report-1"]["tone"], by_id["report-report-1"]["tag"]) == ("analysis", "분석 완료")
+
+
+def test_정상_이벤트가_많아도_상태_필터링_뒤_limit을_적용한다(monkeypatch):
+    day = date(2026, 9, 20)
+    start = datetime(2026, 9, 19, 9, 0)
+    normal_rows = [
+        (f"LOG-NORMAL-{index}", f"EQ-NORMAL-{index}", "LINE-A", "E-101", start, False, True, "프레스", "LINE-A", "정상 설비 이벤트")
+        for index in range(30)
+    ]
+    warning_row = ("LOG-WARNING", "EQ-WARNING", "LINE-A", "E-102", start, False, True, "프레스", "LINE-A", "주의 설비 이벤트")
+    connection = _Connection([normal_rows + [warning_row], [], []])
+    monkeypatch.setattr(db, "_connect", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        db,
+        "list_equipment_status",
+        AsyncMock(return_value=[
+            *({"equipment_id": f"EQ-NORMAL-{index}", "status": "정상"} for index in range(30)),
+            {"equipment_id": "EQ-WARNING", "status": "주의"},
+        ]),
+    )
+
+    alerts = asyncio.run(db.list_alerts(limit=1, as_of=day))
+
+    assert [alert["id"] for alert in alerts] == ["downtime-LOG-WARNING"]
+    assert "limit" not in connection.queries[0][0].lower()
