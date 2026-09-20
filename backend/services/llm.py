@@ -78,7 +78,9 @@ AGENT_MAX_ITERATIONS = 8  # 도구 호출 무한루프 방지용 상한
 #   402 in_flight_budget_exhausted 로 막힌다.
 #   값을 더 줄이면 잔액은 아끼지만 긴 리포트가 잘려 JSON 파싱이 깨진다.
 #   causes가 여러 건인 최악의 경우를 재보고 여유를 둔 값이 2000이다.
-MAX_OUTPUT_TOKENS = 2000
+#   ⚠️ 추론 모델(gpt-5 계열)로 바꾸면서 같은 예산 안에서 추론 토큰까지 나눠 쓰게 됐다.
+#      2000으로는 부족해 리포트 JSON이 중간에 잘렸다(실측: 2,363자·2,905자 지점에서 절단).
+MAX_OUTPUT_TOKENS = 4000
 
 # 이미지는 "data:image/png;base64,iVBOR..." 같은 data URL 한 줄로 들어온다.
 # 이 정규식은 앞머리(data:image/png;base64,)와 뒤의 긴 base64 덩어리를 따로 잡는다.
@@ -261,6 +263,18 @@ def _install_tool_call_passthrough() -> None:
 #    Gemini에서 이미 같은 일을 겪었다(답이 빈 문자열이나 'E' 한 글자로 나옴).
 #    effort를 낮추고, exclude로 추론 내용 자체는 응답에서 뺀다.
 #    MESTORY_LLM_REASONING_EFFORT가 비어 있으면 아예 보내지 않는다(비추론 모델용).
+#
+# ③ response_format — 모델이 '문법이 깨진 JSON'을 아예 못 내보내게 강제한다.
+#    배포본에서 1차·2차 모두 같은 자리에서 깨졌다:
+#      JSONDecodeError: Expecting ',' delimiter (line 61 column 6)
+#    원인은 모델이 자연어 칸에 큰따옴표를 그대로 쓴 것이다.
+#      "코드("MAT-401", "ETC-603")가 많다"   ← 쉼표 앞 따옴표를 닫는 것으로 오해
+#    _escape_inner_quotes()가 이 유형을 고치지만, 따옴표 뒤에 쉼표가 오면
+#    '진짜 닫는 따옴표'로 판단하도록 돼 있어 이 모양만은 못 고친다.
+#    프롬프트로도 안 고쳐진다 — 2차 재시도가 같은 자리에서 또 깨졌다.
+#    json_object는 문법만 보장한다. 필드 검증은 기존 Pydantic과 재시도 사다리가 그대로 한다.
+#    (엄격한 json_schema는 Pydantic 스키마를 규칙에 맞게 변환해야 해서 지금은 쓰지 않는다)
+#    ⚠️ 시스템 프롬프트에 'JSON'이라는 단어가 있어야 동작한다 — _build_prompt가 충족한다.
 
 
 def _openrouter_extra_body() -> dict | None:
@@ -274,6 +288,9 @@ def _openrouter_extra_body() -> dict | None:
     effort = os.getenv("MESTORY_LLM_REASONING_EFFORT", "").strip()
     if effort:
         body["reasoning"] = {"effort": effort, "exclude": True}
+
+    if os.getenv("MESTORY_LLM_JSON_MODE", "1") != "0":
+        body["response_format"] = {"type": "json_object"}
     return body or None
 
 
@@ -540,6 +557,17 @@ def _extract_json(text: str) -> dict:
             )
         raise ValueError("응답에서 JSON 객체를 찾지 못했습니다")
     candidate = cleaned[start : end + 1]
+
+    # 닫는 괄호가 모자라면 잘린 것이다.
+    # 위의 end == -1 검사만으로는 못 잡는다: 안쪽 객체의 }가 이미 여러 개 있어서
+    # rfind("}")가 그중 마지막을 잡고 검사를 통과해버린다. 그러면 잘림이
+    # "Expecting ',' delimiter" 같은 문법 오류로 보여 원인을 잘못 짚게 된다(실제로 그랬다).
+    if candidate.count("{") > candidate.count("}") or candidate.count("[") > candidate.count("]"):
+        raise ValueError(
+            f"응답이 중간에 끊겼습니다 — MAX_OUTPUT_TOKENS({MAX_OUTPUT_TOKENS})에 걸렸을 수 있습니다. "
+            f"출력 길이 {len(cleaned)}자, 닫히지 않은 괄호 있음"
+        )
+
     try:
         return json.loads(candidate)
     except json.JSONDecodeError as exc:
@@ -548,6 +576,15 @@ def _extract_json(text: str) -> dict:
         try:
             repaired = json.loads(_escape_inner_quotes(candidate))
         except json.JSONDecodeError:
+            # 실패한 자리 주변을 남긴다.
+            # 왜: 에러 메시지는 위치(line/column)만 알려주고 그 자리에 무엇이 있었는지는
+            #   안 알려준다. 그게 없으면 "따옴표 때문인지 다른 이유인지"를 추측할 수밖에 없다.
+            #   실제로 이것 때문에 원인을 세 번 잘못 짚었다.
+            around = candidate[max(0, exc.pos - 250): exc.pos + 250]
+            logger.error(
+                "JSON 파싱 실패 (%s) — 전체 %d자, 실패 위치 %d. 주변 원문:\n%s",
+                exc, len(candidate), exc.pos, around,
+            )
             raise exc
         logger.info("JSON 문자열 안의 따옴표를 고쳐 파싱에 성공했습니다 (%s)", exc.msg)
         return repaired
