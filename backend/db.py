@@ -412,6 +412,11 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
     day_start = as_of or _today_kst()
     cutoff = _cutoff(as_of)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
     yesterday_start = day_start - timedelta(days=1)
+    # "전일 대비"는 같은 경과 시간끼리 비교한다. 오늘 오후 4시까지를 어제 하루 전체와 견주면
+    # 낮에는 항상 다운타임이 줄어든 것처럼 나온다. 지난 날짜는 경과가 하루라 어제 전체와 같다.
+    yesterday_cutoff = datetime(yesterday_start.year, yesterday_start.month, yesterday_start.day) + (
+        cutoff - datetime(day_start.year, day_start.month, day_start.day)
+    )
     trend_start = day_start - timedelta(days=6)
 
     try:
@@ -436,9 +441,9 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 """,
                 (
                     day_start, cutoff,
-                    yesterday_start, day_start,
+                    yesterday_start, yesterday_cutoff,
                     day_start, cutoff,
-                    yesterday_start, day_start,
+                    yesterday_start, yesterday_cutoff,
                 ),
             )
             today_downtime, yesterday_downtime, today_avg_recovery, yesterday_avg_recovery = await kpi_cur.fetchone()
@@ -455,7 +460,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 """,
                 (
                     _kst_midnight(day_start), _aware(cutoff),
-                    _kst_midnight(yesterday_start), _kst_midnight(day_start),
+                    _kst_midnight(yesterday_start), _aware(yesterday_cutoff),
                 ),
             )
             today_reports, yesterday_reports = await reports_cur.fetchone()

@@ -161,3 +161,25 @@ def test_기준_시각은_오늘이면_지금_지난_날짜면_그날_끝():
     past = date(2026, 3, 15)
     assert db._cutoff(past) == datetime(2026, 3, 16, 0, 0)
     assert db._aware(db._cutoff(past)).utcoffset().total_seconds() == 9 * 3600
+
+
+def test_대시보드_전일_대비는_같은_경과_시간끼리_비교한다(monkeypatch):
+    day = date(2026, 9, 15)  # 지난 날짜: 경과가 하루라 어제 전체와 비교
+    seen = {}
+
+    class _Conn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def execute(self, sql, params=()):
+            seen.setdefault("params", []).append(params)
+            raise RuntimeError("stop after first query")
+
+    monkeypatch.setattr(db, "_connect", AsyncMock(return_value=_Conn()))
+    asyncio.run(db.get_dashboard_summary(day))
+    kpi_params = seen["params"][0]
+    assert kpi_params[0:2] == (day, datetime(2026, 9, 16))
+    assert kpi_params[2:4] == (date(2026, 9, 14), datetime(2026, 9, 15))
