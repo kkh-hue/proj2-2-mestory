@@ -46,11 +46,22 @@ export default function EquipmentPage() {
   const warnCount = items.filter((item) => item.status === "주의").length;
   const stopCount = items.filter((item) => item.status === "정지").length;
 
+  // "정지"의 기준 시각이 오늘/과거 날짜에 따라 달라(backend/db.py의 _cutoff) 헷갈리기 쉬워서
+  // 카드 설명에 그대로 풀어 적는다. 오늘이면 지금 이 순간(1분마다 자동 갱신), 과거 날짜를
+  // 고르면 그 날짜가 끝나는 자정 시점 기준으로 "그때 안 끝난 다운타임"을 정지로 센다.
+  const isToday = asOf === todayKst();
+  const stopNote = isToday
+    ? "지금 이 순간(실시간) 다운타임이 진행 중인 설비 — 1분마다 자동 갱신"
+    : `${asOf} 자정까지 다운타임이 끝나지 않았던 설비`;
+  const warnNote = isToday
+    ? "지금 시점 기준 최근 7일 가동률 95% 미만인 설비"
+    : `${asOf} 기준 최근 7일 가동률 95% 미만인 설비`;
+
   const summary = [
     { key: "total", label: "전체 설비", value: `${items.length}대`, note: "등록된 전체 설비 수", Icon: IconReport, tone: "tone-purple" },
-    { key: "ok", label: "정상 가동", value: `${okCount}대`, note: "정상적으로 가동 중인 설비", Icon: IconCheck, tone: "tone-ok" },
-    { key: "warn", label: "점검 필요", value: `${warnCount}대`, note: "최근 7일 가동률 95% 미만인 설비", Icon: IconTriangleWarning, tone: "tone-warn" },
-    { key: "stop", label: "정지", value: `${stopCount}대`, note: "현재 정지 상태인 설비", Icon: IconStopCircle, tone: "tone-stop" },
+    { key: "ok", label: "정상 가동", value: `${okCount}대`, note: "위 '정지'·'점검 필요' 어디에도 안 걸린 설비", Icon: IconCheck, tone: "tone-ok" },
+    { key: "warn", label: "점검 필요", value: `${warnCount}대`, note: warnNote, Icon: IconTriangleWarning, tone: "tone-warn" },
+    { key: "stop", label: "정지", value: `${stopCount}대`, note: stopNote, Icon: IconStopCircle, tone: "tone-stop" },
   ] as const;
 
   return (
