@@ -31,7 +31,7 @@ from .db import (
     list_reports,
 )
 from .scope import ScopeError, resolve_scope
-from .services.llm import DowntimeReport, generate_report, get_model_name
+from .services.llm import AnalysisInfrastructureError, DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -205,16 +205,19 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
     # 질문(message)이 있으면 질문 속 설비·라인과 세션의 이전 범위도 쓴다. docs/specs/report-scope.md
     line_id, equipment_id = await _resolve_request_scope(request)
 
-    report = await generate_report(
-        line_id=line_id,
-        equipment_id=equipment_id,
-        date_from=request.date_from,
-        date_to=request.date_to,
-        session_id=request.session_id,
-        images=request.images,
-        message=request.message,
-        report_id=report_id,
-    )
+    try:
+        report = await generate_report(
+            line_id=line_id,
+            equipment_id=equipment_id,
+            date_from=request.date_from,
+            date_to=request.date_to,
+            session_id=request.session_id,
+            images=request.images,
+            message=request.message,
+            report_id=report_id,
+        )
+    except AnalysisInfrastructureError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     # response_model=DowntimeReport라 본문 계약은 못 건드린다 — "상세 리포트 보기"가
     # 재조회 없이 바로 쓸 수 있게 id는 헤더로 얹어 준다 (CORS expose_headers 참고).
     response.headers["X-Report-Id"] = report_id

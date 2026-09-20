@@ -114,6 +114,18 @@ def test_report_contract(api, payload):
     }
 
 
+def test_report_analysis_infrastructure_failure_returns_503_without_report_id(api):
+    module, generator = api()
+    generator.side_effect = module.AnalysisInfrastructureError("분석 인프라에 연결할 수 없습니다")
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "분석 인프라에 연결할 수 없습니다"}
+    assert "x-report-id" not in response.headers
+
+
 def test_invalid_request_keeps_422(api):
     module, generator = api()
     with TestClient(module.app) as client:
