@@ -55,7 +55,7 @@
 |---|---|
 | 대화 기록(`_SESSION_STORE`) | **이미지 base64를 저장하지 않는다.** 텍스트 부분만 저장 |
 | Langfuse 트레이스 | base64를 **마스킹**해서 보낸다 (`data:image/png;base64,<39286자 생략>` 형태) |
-| `equipment_id`/`line_id`/`period` | 기존대로 **사용자 입력이 정답** — LLM 출력으로 덮어쓰지 않는다 |
+| `equipment_id`/`line_id`/`period` | 기존대로 **사용자 입력이 정답** — LLM 출력으로 덮어쓰지 않는다. 단 `line_id`는 설비ID가 주어지면 `resolve_scope()`(`backend/scope.py`)가 설비 마스터에서 채운다 — LLM 출력이 아니라 마스터 조회이므로 이 원칙에 어긋나지 않는다 |
 | `visual_findings` | LLM이 이미지에서 읽은 사실만. 추론·판정은 `causes`에 |
 
 **Edge Cases**
