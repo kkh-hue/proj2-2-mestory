@@ -16,6 +16,7 @@ LLM 에이전트가 정지 로그·에러코드 사전·정비이력을 조회�
 - 입력·출력의 자세한 규격과 합격 기준: `docs/specs/downtime-logs.md`, `error-codes.md`, `maintenance-history.md`
 - 잘못된 입력은 예외를 던지지 않고 `{"error": "...", "hint": "..."}` 를 돌려줍니다. 에이전트가 읽고 고쳐서 다시 부를 수 있습니다.
 - 사전에 없는 코드는 `found: false` 로 분명히 알려 줍니다. (원인을 지어내지 않게 하기 위해)
+- 계획 정지(`ETC-602`)와 원인 미확인 코드(`ETC-604`)는 코드가 `is_planned_stop` / `is_unknown_cause` 표시를 붙이고, 코드별 집계에서 따로 뺍니다. **표시까지만 코드가 하고**, 최종 원인 목록에 넣을지·심각도는 LLM이 `skills/SKILL.md` 기준으로 판단합니다.
 
 ## 실행 방법
 
@@ -42,9 +43,9 @@ server_params = StdioServerParameters(
     args=["-m", "mcp_server.server"],
     cwd=str(REPO_ROOT),
     # 아래 env 가 없으면 DB 설정이 서버에 전달되지 않습니다 (주의 사항 참고)
-    env={k: v for k in ("MESTORY_DATA_SOURCE", "DATABASE_URL", "MESTORY_DATA_DIR")
-         if (v := os.getenv(k))},
+    env=_mcp_subprocess_env(),   # 기본 환경 + MCP_ENV_PASSTHROUGH 의 값
 )
+# MCP_ENV_PASSTHROUGH = MESTORY_DATA_SOURCE, MESTORY_DATA_DIR, DATABASE_URL, DATABASE_PUBLIC_URL
 ```
 
 > **주의**: mcp 라이브러리는 보안상 `PATH` 등 기본 환경변수만 자식 프로세스에 넘깁니다.
@@ -71,9 +72,9 @@ pytest -v                      # 자동 시험 (Spec 의 합격 기준을 그대
 python ../실습/try_mcp_server.py   # 서버를 띄워 도구 목록과 호출 결과를 눈으로 확인
 ```
 
-- CSV 모드: `31 passed, 4 skipped` (건너뛴 4개는 CSV↔DB 비교 — DB 주소가 있으면 실행됨)
-- DB 모드: `MESTORY_DATA_SOURCE=db` + 주소를 설정하면 `35 passed`
-- 데이터가 없으면 실패 대신 **건너뜀(skip)** 으로 표시됩니다.
+- CSV 모드(`data/` 폴더에 CSV 4개): 조회 도구 시험이 전부 실행됩니다. CSV↔DB 비교 시험은 건너뜁니다.
+- DB 모드: `MESTORY_DATA_SOURCE=db` + 접속 주소를 설정하면 CSV↔DB 비교까지 실행됩니다.
+- 데이터가 없으면 실패 대신 **건너뜀(skip)** 으로 표시됩니다. 통과 개수는 데이터·환경에 따라 달라서 여기에 숫자를 적지 않습니다.
 
 ## MCP 클라이언트에 붙여서 확인 (MCP Inspector)
 
@@ -128,4 +129,4 @@ mcp_server/
 
 - 4번째 도구를 추가할지 (미정)
 - `/mcp` 공개 endpoint(Streamable HTTP)는 배포 담당 범위 — 여기서는 stdio 만 제공
-- 배포 환경에서 DB 모드로 돌리려면: `backend/requirements.txt` 에 `psycopg[binary]` 추가, Railway 백엔드 서비스 변수에 `MESTORY_DATA_SOURCE=db` 와 `DATABASE_URL` 설정
+- 배포 환경은 DB 모드로 동작 중입니다: `backend/requirements.txt` 에 `psycopg[binary]` 가 들어 있고, Railway 백엔드 서비스 변수에 `MESTORY_DATA_SOURCE=db` 와 `DATABASE_URL` 이 설정돼 있습니다. 새 환경을 만들면 이 변수들부터 확인하세요.
