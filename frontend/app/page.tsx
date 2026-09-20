@@ -2,7 +2,7 @@
 // 실제 리포트 생성(POST /report)은 "다운타임 분석" 탭(/downtime)에서 동작합니다.
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AiSummaryCard from "../components/AiSummaryCard";
 import EventsTable from "../components/EventsTable";
 import KpiCard, { type KpiCardData } from "../components/KpiCard";
@@ -10,6 +10,7 @@ import NewAnalysisModal from "../components/NewAnalysisModal";
 import Topbar from "../components/Topbar";
 import TrendChart from "../components/TrendChart";
 import { getDashboard } from "../lib/api";
+import { useLiveTick } from "../lib/useLiveTick";
 import { todayKst } from "../lib/date";
 import { lineLabel } from "../lib/labels";
 import type { DashboardSummary } from "../types/dashboard";
@@ -57,19 +58,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [asOf, setAsOf] = useState(todayKst());
+  const tick = useLiveTick(asOf);
+  const loadedFor = useRef<string | null>(null); // 같은 날짜를 다시 조회할 땐 화면을 로딩 상태로 바꾸지 않는다
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError("");
+    let cancelled = false; // 날짜를 빠르게 바꿀 때 늦게 도착한 이전 응답이 덮어쓰지 않게
+    const silent = loadedFor.current === asOf; // 자동 갱신: 깜빡이지 않고, 실패해도 기존 화면을 유지
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     getDashboard(asOf)
-      .then((data) => !cancelled && setSummary(data))
-      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
+      .then((data) => {
+        if (cancelled) return;
+        setSummary(data);
+        loadedFor.current = asOf;
+        setError("");
+      })
+      .catch((cause) => !cancelled && !silent && setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [asOf]);
+  }, [asOf, tick]);
 
   const needsReviewCount = summary?.recent_events.filter((e) => e.severity === "판정 불가").length ?? 0;
 

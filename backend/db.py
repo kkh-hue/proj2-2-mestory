@@ -385,6 +385,26 @@ def _kst_midnight(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, tzinfo=_KST)
 
 
+def _cutoff(as_of: date | None) -> datetime:
+    """"이 시각 이전에 시작한 일만 일어난 일"로 보는 기준 시각 (시간대 없는 KST 값).
+
+    오늘(as_of를 안 줬거나 오늘 날짜)이면 진짜 지금 — 아직 오지 않은 시각의 이벤트는 넣지 않고,
+    자정을 넘겨 곧 끝날 다운타임 때문에 "하루 끝" 기준으로 정지가 되는 일도 없앤다.
+    지난 날짜(또는 미래 날짜)는 그 날이 끝나는 시점(다음 날 00:00)의 상태를 본다.
+    downtime_log.start_time은 시간대 없는 KST 값이라 이 값과 그대로 비교한다.
+    """
+    now = datetime.now(_KST)
+    day = as_of or now.date()
+    if day == now.date():
+        return now.replace(tzinfo=None)
+    return datetime(day.year, day.month, day.day) + timedelta(days=1)
+
+
+def _aware(moment: datetime) -> datetime:
+    """_cutoff 값을 reports.created_at(timestamptz)과 비교할 수 있게 KST 시간대를 붙인다."""
+    return moment.replace(tzinfo=_KST)
+
+
 def _delta(today: float, yesterday: float) -> dict:
     """"전일 대비" 배지 하나를 만든다. 어제 값이 0이면 방향을 판단할 기준이 없어 0%로 둔다."""
     if yesterday == 0:
@@ -397,8 +417,13 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
     """as_of를 안 주면 오늘 기준(기존과 동일). 주면 "그 날짜를 오늘로 보고" 어제 대비·
     최근 7일 추이를 그 날짜 기준으로 다시 계산한다 (대시보드 상단 날짜 선택용)."""
     day_start = as_of or _today_kst()
-    day_end = day_start + timedelta(days=1)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
+    cutoff = _cutoff(as_of)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
     yesterday_start = day_start - timedelta(days=1)
+    # "전일 대비"는 같은 경과 시간끼리 비교한다. 오늘 오후 4시까지를 어제 하루 전체와 견주면
+    # 낮에는 항상 다운타임이 줄어든 것처럼 나온다. 지난 날짜는 경과가 하루라 어제 전체와 같다.
+    yesterday_cutoff = datetime(yesterday_start.year, yesterday_start.month, yesterday_start.day) + (
+        cutoff - datetime(day_start.year, day_start.month, day_start.day)
+    )
     trend_start = day_start - timedelta(days=6)
 
     try:
@@ -422,10 +447,10 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 from downtime_log
                 """,
                 (
-                    day_start, day_end,
-                    yesterday_start, day_start,
-                    day_start, day_end,
-                    yesterday_start, day_start,
+                    day_start, cutoff,
+                    yesterday_start, yesterday_cutoff,
+                    day_start, cutoff,
+                    yesterday_start, yesterday_cutoff,
                 ),
             )
             today_downtime, yesterday_downtime, today_avg_recovery, yesterday_avg_recovery = await kpi_cur.fetchone()
@@ -441,8 +466,8 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 from reports
                 """,
                 (
-                    _kst_midnight(day_start), _kst_midnight(day_end),
-                    _kst_midnight(yesterday_start), _kst_midnight(day_start),
+                    _kst_midnight(day_start), _aware(cutoff),
+                    _kst_midnight(yesterday_start), _aware(yesterday_cutoff),
                 ),
             )
             today_reports, yesterday_reports = await reports_cur.fetchone()
@@ -456,7 +481,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 group by day, line_id
                 order by day
                 """,
-                (trend_start, day_end),
+                (trend_start, cutoff),
             )
             trend_rows = await trend_cur.fetchall()
 
@@ -475,7 +500,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 order by d.start_time desc
                 limit 10
                 """,
-                (day_end,),
+                (cutoff,),
             )
             event_rows = await events_cur.fetchall()
 
@@ -483,7 +508,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 "select id, equipment_id, line_id, period, causes, unclassified_count, "
                 "       confidence_note, recommended_action, visual_findings, used_image, created_at "
                 "from reports where created_at < %s order by created_at desc limit 1",
-                (_kst_midnight(day_end),),
+                (_aware(cutoff),),
             )
             latest_report_row = await latest_report_cur.fetchone()
     except Exception as exc:
@@ -701,6 +726,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     """
     day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
+    cutoff = _cutoff(as_of)
     window_start = day_end - timedelta(days=7)
     recent_start = day_end - timedelta(days=1)
 
@@ -727,7 +753,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 where d.start_time < %s and (d.end_time is null or d.start_time >= %s)
                 order by d.start_time desc
                 """,
-                (recent_start, day_end, window_start),
+                (recent_start, cutoff, window_start),
             )
             downtime_rows = await downtime_cur.fetchall()
 
@@ -738,14 +764,14 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 from reports r left join equipment_master e on e.equipment_id = r.equipment_id
                 where r.created_at < %s order by r.created_at desc limit %s
                 """,
-                (_kst_midnight(recent_start), _kst_midnight(day_end), limit),
+                (_kst_midnight(recent_start), _aware(cutoff), limit),
             )
             report_rows = await report_cur.fetchall()
 
             # 이미 리포트로 분석된 정지의 원본 "정지 감지" 알림을 가리기 위한 범위 목록
             scope_cur = await conn.execute(
                 "select line_id, equipment_id, period from reports where created_at < %s",
-                (_kst_midnight(day_end),),
+                (_aware(cutoff),),
             )
             analyzed_scopes = await scope_cur.fetchall()
     except Exception as exc:
@@ -854,6 +880,7 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
     """
     day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
+    cutoff = _cutoff(as_of)
     window_start = day_end - timedelta(days=7)
 
     try:
@@ -877,7 +904,7 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
                 group by e.equipment_id, e.line_id, e.equipment_type
                 order by e.equipment_id
                 """,
-                (day_end, day_end, day_end, window_start, day_end),
+                (cutoff, cutoff, cutoff, window_start, cutoff),
             )
             rows = await cur.fetchall()
     except Exception as exc:
