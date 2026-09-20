@@ -173,6 +173,11 @@ export function IconSend(props: SVGProps<SVGSVGElement>) {
   return <svg {...base({ strokeLinejoin: "round" as const, ...props })}><path d="M20.5 3.5 10.8 13.2" /><path d="M20.5 3.5 14 20.5l-3.2-7.3-7.3-3.2Z" /></svg>;
 }
 
+// 클립 아이콘 — AI 원인 분석 채팅의 이미지 첨부 버튼에 쓴다 (docs/specs/multimodal-frontend.md).
+export function IconPaperclip(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M21.4 11.05 12.2 20.24a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 0 1 5.65 5.66l-9.19 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>;
+}
+
 export function IconUser(props: SVGProps<SVGSVGElement>) {
   return <svg {...base(props)}><circle cx="12" cy="8.3" r="3.3" /><path d="M5 20v-1c0-3 3-5.5 7-5.5s7 2.5 7 5.5v1" /></svg>;
 }
