@@ -21,9 +21,12 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
+  const [equipmentError, setEquipmentError] = useState("");
 
   useEffect(() => {
-    listEquipment().then(setEquipment).catch(() => {});
+    listEquipment()
+      .then(setEquipment)
+      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
     getReport(params.id)
       .then(setReport)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
@@ -55,15 +58,20 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
         </section>
       )}
 
-      {!loading && error && (
+      {!loading && (error || equipmentError) && (
         <section className="status-card status-error" role="alert">
           <strong>리포트를 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span>{error || equipmentError}</span>
         </section>
       )}
 
       {!loading && !error && report && (
         <>
+          {equipmentError && (
+            <p className="form-error" role="status">
+              설비 정보를 불러오지 못했습니다. {equipmentError}
+            </p>
+          )}
           <div className="dashboard-grid">
             <CauseBreakdown causes={report.causes} />
             <InsightPanel report={report} />
