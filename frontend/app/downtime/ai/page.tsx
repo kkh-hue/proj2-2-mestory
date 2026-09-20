@@ -11,7 +11,7 @@ import CauseBreakdown from "../../../components/CauseBreakdown";
 import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
 import {
-  IconChevronRight, IconPlus, IconReport, IconRobot, IconSend, IconStopCircle,
+  IconChevronRight, IconPaperclip, IconPlus, IconReport, IconRobot, IconSend, IconStopCircle,
   IconTriangleWarning, IconUser,
 } from "../../../components/icons";
 import { ReportApiError, createReportWithId, getChatHistory, listChatSessions, listEquipment } from "../../../lib/api";
@@ -77,9 +77,40 @@ function buildFollowUps(report: DowntimeReport): { label: string; question: stri
   return suggestions;
 }
 
+// ── 이미지 첨부 (docs/specs/multimodal-frontend.md) ───────────────────────
+// backend/main.py의 MAX_IMAGES · MAX_IMAGE_BYTES · MAX_TOTAL_IMAGE_BYTES ·
+// ALLOWED_IMAGE_SUBTYPES와 같은 값이다. 한쪽만 고치면 화면을 통과한 파일이
+// 서버에서 422로 튕긴다 — 반드시 같이 고칠 것.
+const MAX_IMAGES = 3;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+// 첨부한 사진 1장. bytes를 들고 있는 이유는 합계 용량을 매번 다시 재지 않기 위해서다.
+type Attachment = { name: string; bytes: number; dataUrl: string };
+
+// 화면에서만 쓰는 값이라 백엔드 계약 타입(types/report.ts)에 넣지 않는다.
+// images는 내가 방금 올린 사진이고, 서버 대화 기록에는 저장되지 않는다(multimodal.md AC-10).
+type ChatTurnView = ChatTurn & { images?: string[] };
+
+function megabytes(bytes: number): string {
+  return (bytes / (1024 * 1024)).toFixed(1);
+}
+
+// 사진 파일을 data URL(긴 글자열)로 바꾼다. JSON에는 그림을 그대로 담을 수 없어서
+// 글자로 번역해 보낸다. FileReader는 비동기라 Promise로 감싼다.
+function readAsDataUrl(file: File): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({ name: file.name, bytes: file.size, dataUrl: String(reader.result) });
+    reader.onerror = () => reject(new Error(file.name));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AiAnalysisChatPage() {
   const [sessionId, setSessionId] = useState("");
-  const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [turns, setTurns] = useState<ChatTurnView[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -90,7 +121,11 @@ export default function AiAnalysisChatPage() {
   // 설비 목록 버튼은 이 날짜 기준 상태를 본다 — 다른 화면(대시보드·설비현황·알림센터)과 같은 기준.
   const [asOf, setAsOf] = useState(todayKst());
   const equipmentTick = useLiveTick(asOf);
+  // 아직 보내지 않은 첨부 사진. 전송을 시도하면 비운다.
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 기본 파일 선택 버튼은 디자인이 팀 스타일과 어긋나 숨겨 두고, 클립 버튼이 대신 눌러 준다.
+  const fileInputRef = useRef<HTMLInputElement>(null);
   // 지금 화면에 보이는 세션. 응답이 늦게 도착했을 때 "그 사이 다른 대화로 옮겼는지" 판단하는 기준이다.
   const activeSessionRef = useRef("");
 
@@ -158,21 +193,80 @@ export default function AiAnalysisChatPage() {
   const lastTurn = turns[turns.length - 1];
   const followUps = !loading && lastTurn?.role === "assistant" && lastReport ? buildFollowUps(lastReport) : [];
 
+  // 고른 파일을 검사해서 통과한 것만 첨부 목록에 넣는다.
+  // 서버도 같은 검사를 하지만, 여기서 먼저 막아야 5MB를 헛되이 올린 뒤 거절당하지 않는다.
+  function handleFilesPicked(event: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(event.target.files ?? []);
+    // 같은 파일을 연달아 골라도 onChange가 다시 불리도록 값을 비운다.
+    event.target.value = "";
+    if (picked.length === 0) return;
+
+    // 장수 초과는 앞 몇 장만 취하지 않고 전부 거부한다 — 어느 장이 빠졌는지 모르는 쪽이 더 나쁘다.
+    if (attachments.length + picked.length > MAX_IMAGES) {
+      setError(`이미지는 최대 ${MAX_IMAGES}장까지 첨부할 수 있습니다.`);
+      return;
+    }
+
+    let total = attachments.reduce((sum, item) => sum + item.bytes, 0);
+    const accepted: File[] = [];
+    const rejected: string[] = [];
+    let typeRejected = false;
+
+    for (const file of picked) {
+      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+        rejected.push(`${file.name}(지원하지 않는 형식)`);
+        typeRejected = true;
+        continue;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        rejected.push(`${file.name}(${megabytes(file.size)}MB — 한 장 최대 ${MAX_IMAGE_BYTES / (1024 * 1024)}MB)`);
+        continue;
+      }
+      if (total + file.size > MAX_TOTAL_IMAGE_BYTES) {
+        rejected.push(`${file.name}(합계 ${MAX_TOTAL_IMAGE_BYTES / (1024 * 1024)}MB 초과)`);
+        continue;
+      }
+      total += file.size;
+      accepted.push(file);
+    }
+
+    // 아이폰 기본 사진은 HEIC라 accept 속성으로 걸러도 "모든 파일"로 바꿔 고를 수 있다.
+    const heicHint = typeRejected ? " png·jpg·webp만 첨부할 수 있습니다. 아이폰 사진은 png나 jpg로 저장해 주세요." : "";
+    setError(rejected.length > 0 ? `첨부하지 못한 파일: ${rejected.join(", ")}.${heicHint}` : "");
+    if (accepted.length === 0) return;
+
+    Promise.all(accepted.map(readAsDataUrl))
+      .then((added) => setAttachments((prev) => [...prev, ...added]))
+      .catch((cause) => setError(`이미지를 읽지 못했습니다: ${cause instanceof Error ? cause.message : "알 수 없는 파일"}`));
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function submitQuestion(rawQuestion: string, dateRange?: { date_from: string; date_to: string }) {
     const question = rawQuestion.trim();
     if (!question || loading || !sessionId) return;
 
     const askedSession = sessionId;
+    // 전송 시도 후에는 성공·실패와 무관하게 첨부를 비운다. 남겨 두면 다음 질문에 또 붙는다.
+    const sentImages = attachments.map((item) => item.dataUrl);
+    setAttachments([]);
     setInput("");
     setError("");
     const askedAt = new Date().toISOString();
-    setTurns((prev) => [...prev, { role: "user", content: question, created_at: askedAt }]);
+    setTurns((prev) => [
+      ...prev,
+      { role: "user", content: question, created_at: askedAt, images: sentImages.length > 0 ? sentImages : undefined },
+    ]);
     setLoading(true);
 
     try {
       const { report, reportId } = await createReportWithId({
         session_id: askedSession,
         message: question,
+        // 첨부가 없으면 아예 넣지 않는다 — 이미지 없는 기존 요청 경로를 그대로 탄다.
+        ...(sentImages.length > 0 ? { images: sentImages } : {}),
         ...dateRange,
       });
       refreshSessions();
@@ -283,7 +377,18 @@ export default function AiAnalysisChatPage() {
               turn.role === "user" ? (
                 <div key={index}>
                   <div className="ai-message ai-message-user">
-                    <div className="ai-bubble ai-bubble-user">{turn.content}</div>
+                    <div className="ai-bubble ai-bubble-user">
+                      {turn.content}
+                      {/* 방금 올린 사진만 보인다 — 서버 대화 기록에는 저장되지 않아 새로고침하면 사라진다 */}
+                      {turn.images && turn.images.length > 0 && (
+                        <div className="ai-bubble-images">
+                          {turn.images.map((src, imageIndex) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={imageIndex} src={src} alt={`첨부 이미지 ${imageIndex + 1}`} />
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <span className="ai-chat-avatar ai-chat-avatar-user">
                       <IconUser />
                     </span>
@@ -300,6 +405,20 @@ export default function AiAnalysisChatPage() {
                       <p className="ai-answer-headline">{turn.content}</p>
                       {turn.report && (
                         <dl className="ai-answer-details">
+                          {/* 이미지를 올린 사람이 가장 먼저 확인하려는 값이라 맨 앞에 둔다.
+                              읽어낸 것이 없으면 빈 칸을 남기지 않고 행 자체를 그리지 않는다. */}
+                          {turn.report.used_image && turn.report.visual_findings && turn.report.visual_findings.length > 0 && (
+                            <div className="ai-answer-row">
+                              <dt>이미지에서 확인한 것</dt>
+                              <dd>
+                                <ul className="ai-visual-findings">
+                                  {turn.report.visual_findings.map((finding, findingIndex) => (
+                                    <li key={findingIndex}>{finding}</li>
+                                  ))}
+                                </ul>
+                              </dd>
+                            </div>
+                          )}
                           <div className="ai-answer-row">
                             <dt>기간</dt>
                             <dd>{turn.report.period}</dd>
@@ -358,7 +477,46 @@ export default function AiAnalysisChatPage() {
             <div ref={messagesEndRef} />
           </div>
 
+          {attachments.length > 0 && (
+            <div className="ai-attach-row">
+              {attachments.map((item, attachIndex) => (
+                <span key={`${item.name}-${attachIndex}`} className="ai-attach-chip">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="ai-attach-thumb" src={item.dataUrl} alt="" />
+                  <span className="ai-attach-name">{item.name}</span>
+                  <button
+                    type="button"
+                    className="ai-attach-remove"
+                    aria-label={`${item.name} 첨부 취소`}
+                    disabled={loading}
+                    onClick={() => removeAttachment(attachIndex)}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           <form className="ai-chat-input-row" onSubmit={handleSubmit}>
+            {/* 실제 파일 선택 창을 여는 입력. 화면에는 숨기고 클립 버튼이 대신 누른다. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              multiple
+              hidden
+              onChange={handleFilesPicked}
+            />
+            <button
+              type="button"
+              className="ai-attach-button"
+              aria-label="이미지 첨부"
+              disabled={loading}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <IconPaperclip />
+            </button>
             <input
               type="text"
               placeholder="질문을 입력하세요"
@@ -367,6 +525,7 @@ export default function AiAnalysisChatPage() {
               onChange={(e) => setInput(e.target.value)}
               disabled={loading}
             />
+            {/* 이미지만으로는 보낼 수 없다 — backend가 설비·라인을 질문(message)에서 찾는다 */}
             <button type="submit" className="ai-send-button" aria-label="전송" disabled={loading || !input.trim()}>
               <IconSend />
             </button>
