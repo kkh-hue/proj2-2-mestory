@@ -143,6 +143,8 @@ export default function AiAnalysisChatPage() {
     window.localStorage.setItem(SESSION_STORAGE_KEY, id);
     setHydrating(true);
     setError("");
+    // 대화를 옮기면 아직 보내지 않은 첨부도 비운다 — 다른 대화의 근거로 딸려가면 안 된다.
+    setAttachments([]);
     // 세션을 빠르게 갈아타면 먼저 요청한 대화 기록이 늦게 도착해 현재 화면을 덮어쓸 수 있다.
     const isCurrent = () => activeSessionRef.current === id;
     getChatHistory(id)
