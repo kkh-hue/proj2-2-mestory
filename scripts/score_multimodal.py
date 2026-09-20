@@ -189,7 +189,8 @@ def is_fallback(report) -> bool:
     return report.confidence_note == FALLBACK_MESSAGE
 
 
-def run_case(case: dict, with_image: bool, *, retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
+def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
+             retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
     """한 케이스를 돌린다. 폴백이 나오면 기다렸다 다시 시도한다.
 
     wait_sec 기본값이 130초인 이유: OpenRouter가 402(in_flight_budget_exhausted)와
@@ -199,6 +200,15 @@ def run_case(case: dict, with_image: bool, *, retries: int = RETRIES, wait_sec: 
     """
     kwargs = dict(case["request"])
     kwargs["images"] = [data_url(case["image"])] if with_image else None
+    # Langfuse에서 회차별로 묶어 보기 위한 값.
+    # 안 붙이면 모든 회차의 트레이스가 한 무더기로 섞여 "어느 회차 것인지" 알 수 없다.
+    # (실제로 179건이 그렇게 섞여 있었다)
+    # ⚠️ session_id가 아니라 trace_session_id다.
+    #    session_id를 주면 DB에서 대화 기록을 찾는데, Windows에서는
+    #    psycopg(Selector 루프)와 MCP 서브프로세스(Proactor 루프)가 충돌한다.
+    #    평가는 '트레이스를 회차별로 묶는 이름표'만 필요하다.
+    kwargs["trace_session_id"] = f"eval-{tag}{'' if with_image else '-noimg'}"
+    kwargs["user_id"] = "eval-runner"
 
     for attempt in range(retries + 1):
         t0 = time.perf_counter()
@@ -235,7 +245,7 @@ def do_run(tag: str, skip_control: bool) -> dict:
     unmeasured = []          # 인프라 오류로 끝내 못 잰 케이스 — 점수에서 제외한다
     degraded = []            # 축소 스키마로 떨어진 케이스 — 점수는 세되 표시한다
     for case in cases:
-        report, sec, failed_infra = run_case(case, with_image=True)
+        report, sec, failed_infra = run_case(case, with_image=True, tag=tag)
 
         if failed_infra:
             # ⚠️ 0점으로 세지 않는다. 모델이 틀린 게 아니라 측정을 못 한 것이다.
@@ -273,7 +283,7 @@ def do_run(tag: str, skip_control: bool) -> dict:
 
         # 이미지 없이 같은 조건 — '이미지가 실제로 기여했다'는 증거 (S-2)
         if not skip_control and case["checks"]["used_image"]:
-            ctrl, csec, ctrl_infra = run_case(case, with_image=False)
+            ctrl, csec, ctrl_infra = run_case(case, with_image=False, tag=tag)
             if ctrl_infra:
                 # 대조군이 폴백이면 그 차이가 이미지 덕분인지 오류 탓인지 알 수 없다.
                 print(f"        ⚠️  {case['id']} 대조군 측정 불가 — 기여도 계산에서 제외")

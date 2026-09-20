@@ -333,7 +333,12 @@ def _ensure_langfuse_mask() -> None:
         )
 
 
-def _build_run_config(session_id: str | None, line_id: str | None, equipment_id: str | None) -> dict:
+def _build_run_config(
+    session_id: str | None,
+    line_id: str | None,
+    equipment_id: str | None,
+    user_id: str | None = None,
+) -> dict:
     """AgentExecutor.ainvoke(config=...)에 넘길 값. Langfuse 콜백은 이제 생성자가 아니라
     invoke config의 metadata(langfuse_* 키)로 session_id/trace_name을 받는다."""
     if LangfuseCallbackHandler is None or not os.getenv("LANGFUSE_PUBLIC_KEY"):
@@ -346,6 +351,10 @@ def _build_run_config(session_id: str | None, line_id: str | None, equipment_id:
     }
     if session_id:
         metadata["langfuse_session_id"] = session_id
+    if user_id:
+        # Langfuse Users 화면에서 "누가 만든 요청인가"로 묶인다.
+        # 안 붙이면 Users 탭이 통째로 비어 사용자별 사용량·오류를 볼 수 없다.
+        metadata["langfuse_user_id"] = user_id
     return {"callbacks": [LangfuseCallbackHandler()], "metadata": metadata}
 
 
@@ -672,6 +681,8 @@ async def generate_report(
     date_from: str | None = None,
     date_to: str | None = None,
     session_id: str | None = None,
+    user_id: str | None = None,
+    trace_session_id: str | None = None,
     images: list[str] | None = None,
     message: str | None = None,
     report_id: str | None = None,
@@ -709,7 +720,17 @@ async def generate_report(
     )
 
     chat_history = await load_chat_history(session_id, _SESSION_HISTORY_LIMIT) if session_id else []
-    run_config = _build_run_config(session_id, line_id, equipment_id)
+    # Langfuse에서 트레이스를 묶는 이름과, 대화 기록을 묶는 session_id는 별개다.
+    #
+    # 왜 나눴나 (Windows에서 막혔다):
+    #   session_id를 주면 DB(psycopg)에서 대화 기록을 찾는데, psycopg 비동기는
+    #   Windows에서 SelectorEventLoop를 요구한다. 그런데 MCP 서버는 서브프로세스로
+    #   띄우므로 ProactorEventLoop가 필요하다 — 둘을 동시에 만족시킬 수 없다.
+    #   평가 스크립트는 '트레이스를 회차별로 묶는 이름표'만 필요하고 대화 기록은
+    #   필요 없으므로, DB를 타지 않는 별도 인자를 둔다.
+    run_config = _build_run_config(
+        trace_session_id or session_id, line_id, equipment_id, user_id
+    )
 
     server_params = StdioServerParameters(
         command=sys.executable,
