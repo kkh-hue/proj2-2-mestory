@@ -114,6 +114,95 @@ def test_report_contract(api, payload):
     }
 
 
+def test_report_analysis_infrastructure_failure_returns_503_without_report_id(api):
+    module, generator = api()
+    generator.side_effect = module.AnalysisInfrastructureError("분석 인프라에 연결할 수 없습니다")
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "분석 인프라에 연결할 수 없습니다"}
+    assert "x-report-id" not in response.headers
+
+
+@pytest.mark.parametrize("failure", ["report", "message"])
+def test_report_storage_failure_returns_503_without_report_id(api, failure):
+    module, generator = api()
+    generator.side_effect = module.DatabaseUnavailableError(f"{failure} storage failed")
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": f"{failure} storage failed"}
+    assert "x-report-id" not in response.headers
+
+
+def test_report_db_failure_returns_503(api, monkeypatch):
+    module, generator = api()
+    monkeypatch.setattr(
+        module,
+        "get_session_scope",
+        AsyncMock(side_effect=module.DatabaseUnavailableError("DB unavailable")),
+    )
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"message": "분석", "session_id": "session-1"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "DB unavailable"}
+    assert "x-report-id" not in response.headers
+    generator.assert_not_awaited()
+
+
+def test_empty_report_list_keeps_success_response(api, monkeypatch):
+    module, _ = api()
+    monkeypatch.setattr(module, "list_reports", AsyncMock(return_value=[]))
+
+    with TestClient(module.app) as client:
+        response = client.get("/reports")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_report_not_found_keeps_404_when_db_is_healthy(api, monkeypatch):
+    module, _ = api()
+    monkeypatch.setattr(module, "get_report", AsyncMock(return_value=None))
+
+    with TestClient(module.app) as client:
+        response = client.get("/reports/missing")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "function_name"),
+    [
+        ("/chat/sessions", "list_chat_sessions"),
+        ("/chat/session-1", "list_chat_turns"),
+        ("/dashboard", "get_dashboard_summary"),
+        ("/downtime/analysis", "get_downtime_analysis"),
+        ("/alerts", "list_alerts"),
+        ("/equipment", "list_equipment_status"),
+    ],
+)
+def test_db_failure_returns_503_for_read_apis(api, monkeypatch, path, function_name):
+    module, _ = api()
+    monkeypatch.setattr(
+        module,
+        function_name,
+        AsyncMock(side_effect=module.DatabaseUnavailableError("DB unavailable")),
+    )
+
+    with TestClient(module.app) as client:
+        response = client.get(path)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "DB unavailable"}
+
+
 def test_invalid_request_keeps_422(api):
     module, generator = api()
     with TestClient(module.app) as client:
@@ -125,6 +214,8 @@ def test_invalid_request_keeps_422(api):
 
 def test_report_scope_ac06_질문에_범위가_없으면_422이고_생성하지_않는다(api):
     module, generator = api()
+    # DB가 정상이고 범위만 없는 경우의 422를 검증한다.
+    module.get_session_scope = AsyncMock(return_value=None)
     with TestClient(module.app) as client:
         response = client.post("/report", json={"message": "원인 분석해줘", "session_id": "s-1"})
     assert response.status_code == 422
@@ -135,6 +226,7 @@ def test_report_scope_ac06_질문에_범위가_없으면_422이고_생성하지_
 def test_report_scope_ac01_질문_속_설비가_조건으로_넘어간다(api, monkeypatch):
     module, generator = api()
     monkeypatch.setattr(module, "_load_equipment_master", AsyncMock(return_value=({"EQ-057": "LINE-C"}, {"EQ-057": "컨베이어"})))
+    monkeypatch.setattr(module, "get_session_scope", AsyncMock(return_value=None))
     generator.side_effect = None
     generator.return_value = module.DowntimeReport(
         equipment_id="EQ-057", line_id="LINE-C", period="전체 ~ 전체", causes=[], unclassified_count=0,
@@ -145,6 +237,35 @@ def test_report_scope_ac01_질문_속_설비가_조건으로_넘어간다(api, m
     assert response.status_code == 200
     kwargs = generator.call_args.kwargs
     assert (kwargs["line_id"], kwargs["equipment_id"]) == ("LINE-C", "EQ-057")
+
+
+def test_report_scope_rejects_equipment_line_mismatch_before_llm(api, monkeypatch):
+    module, generator = api()
+    monkeypatch.setattr(module, "_load_equipment_master", AsyncMock(return_value=({"EQ-057": "LINE-C"}, {"EQ-057": "컨베이어"})))
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A", "equipment_id": "EQ-057"})
+
+    assert response.status_code == 422
+    assert "x-report-id" not in response.headers
+    generator.assert_not_awaited()
+
+
+def test_report_scope_rejects_master_lookup_failure(api, monkeypatch):
+    module, generator = api()
+    monkeypatch.setattr(
+        module,
+        "_load_equipment_master",
+        AsyncMock(side_effect=module.DatabaseUnavailableError("master unavailable")),
+    )
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"equipment_id": "EQ-057"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "master unavailable"}
+    assert "x-report-id" not in response.headers
+    generator.assert_not_awaited()
 
 
 @pytest.mark.parametrize("payload", [{}, {"line_id": None, "equipment_id": None, "date_from": None, "date_to": None, "session_id": None}])

@@ -43,24 +43,31 @@ export default function CauseDetailTable({ causes }: { causes: DowntimeCause[] }
       <div className="events-head">
         <h3>다운타임 원인 상세</h3>
       </div>
-      <div className="events-table-wrap">
-        <table className="events-table">
-          <thead>
-            <tr>
-              <th>에러코드</th>
-              <th>설명</th>
-              <th>심각도</th>
-              <th>상태</th>
-              <th aria-hidden="true" />
-            </tr>
-          </thead>
-          <tbody>
-            {causes.map((cause, index) => (
-              <DetailRow cause={cause} key={`${cause.error_code}-${index}`} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {causes.length === 0 ? (
+        // 계획 정지(ETC-602)만 있었던 경우처럼, 원인 목록이 원래 비어 있는 게
+        // 맞는 분석 결과일 수 있다 — 빈 표만 보여주면 오류처럼 보이니 안내를 덧붙인다.
+        // 실제 이유는 위 "분석 참고 사항"에 있다.
+        <p className="no-causes">확인된 원인이 없습니다. 위 "분석 참고 사항"을 확인해 주세요.</p>
+      ) : (
+        <div className="events-table-wrap">
+          <table className="events-table">
+            <thead>
+              <tr>
+                <th>에러코드</th>
+                <th>설명</th>
+                <th>심각도</th>
+                <th>상태</th>
+                <th aria-hidden="true" />
+              </tr>
+            </thead>
+            <tbody>
+              {causes.map((cause, index) => (
+                <DetailRow cause={cause} key={`${cause.error_code}-${index}`} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

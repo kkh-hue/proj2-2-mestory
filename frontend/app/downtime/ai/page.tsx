@@ -15,6 +15,8 @@ import {
   IconTriangleWarning, IconUser,
 } from "../../../components/icons";
 import { ReportApiError, createReportWithId, getChatHistory, listChatSessions, listEquipment } from "../../../lib/api";
+import { todayKst } from "../../../lib/date";
+import { useLiveTick } from "../../../lib/useLiveTick";
 import { reportScope } from "../../../lib/labels";
 import type { ChatSessionSummary, ChatTurn, DowntimeReport, SavedReport } from "../../../types/report";
 import type { EquipmentSummaryItem } from "../../../types/equipment";
@@ -85,6 +87,9 @@ export default function AiAnalysisChatPage() {
   const [reviewNeeded, setReviewNeeded] = useState<EquipmentSummaryItem[]>([]);
   const [allEquipment, setAllEquipment] = useState<EquipmentSummaryItem[]>([]);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
+  // 설비 목록 버튼은 이 날짜 기준 상태를 본다 — 다른 화면(대시보드·설비현황·알림센터)과 같은 기준.
+  const [asOf, setAsOf] = useState(todayKst());
+  const equipmentTick = useLiveTick(asOf);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 지금 화면에 보이는 세션. 응답이 늦게 도착했을 때 "그 사이 다른 대화로 옮겼는지" 판단하는 기준이다.
   const activeSessionRef = useRef("");
@@ -92,7 +97,9 @@ export default function AiAnalysisChatPage() {
   function refreshSessions() {
     listChatSessions()
       .then(setSessions)
-      .catch(() => {});
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : "세션 목록을 불러오지 못했습니다.");
+      });
   }
 
   function loadSession(id: string) {
@@ -105,7 +112,11 @@ export default function AiAnalysisChatPage() {
     const isCurrent = () => activeSessionRef.current === id;
     getChatHistory(id)
       .then((history) => isCurrent() && setTurns(history))
-      .catch(() => isCurrent() && setTurns([]))
+      .catch((cause) => {
+        if (isCurrent()) {
+          setError(cause instanceof Error ? cause.message : "대화 기록을 불러오지 못했습니다.");
+        }
+      })
       .finally(() => isCurrent() && setHydrating(false));
   }
 
@@ -121,15 +132,23 @@ export default function AiAnalysisChatPage() {
   }, []);
 
   // 사용자가 57대 설비 상태를 일일이 파악할 수 없으니, 확인이 필요한(정상이 아닌)
-  // 설비만 추려 버튼으로 먼저 보여준다 — 설비관리 화면과 같은 status 값을 그대로 쓴다.
+  // 설비만 추려 버튼으로 먼저 보여준다 — 설비관리 화면과 같은 status 값을, 같은 날짜(asOf)
+  // 기준으로 그대로 쓴다. 오늘이면 useLiveTick으로 1분마다 조용히 다시 불러온다.
   useEffect(() => {
-    listEquipment()
+    let cancelled = false;
+    listEquipment(asOf)
       .then((items) => {
+        if (cancelled) return;
         setAllEquipment(items);
         setReviewNeeded(items.filter((item) => item.status !== "정상"));
       })
-      .catch(() => setReviewNeeded([]));
-  }, []);
+      .catch((cause) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "설비 상태를 불러오지 못했습니다.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [asOf, equipmentTick]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -139,7 +158,7 @@ export default function AiAnalysisChatPage() {
   const lastTurn = turns[turns.length - 1];
   const followUps = !loading && lastTurn?.role === "assistant" && lastReport ? buildFollowUps(lastReport) : [];
 
-  async function submitQuestion(rawQuestion: string) {
+  async function submitQuestion(rawQuestion: string, dateRange?: { date_from: string; date_to: string }) {
     const question = rawQuestion.trim();
     if (!question || loading || !sessionId) return;
 
@@ -151,7 +170,11 @@ export default function AiAnalysisChatPage() {
     setLoading(true);
 
     try {
-      const { report, reportId } = await createReportWithId({ session_id: askedSession, message: question });
+      const { report, reportId } = await createReportWithId({
+        session_id: askedSession,
+        message: question,
+        ...dateRange,
+      });
       refreshSessions();
       // 분석하는 동안 다른 대화로 옮겼다면 그 대화 화면에 이 답변을 끼워 넣지 않는다
       // (답변은 이미 서버에 저장됐으므로 원래 대화로 돌아오면 보인다).
@@ -183,7 +206,12 @@ export default function AiAnalysisChatPage() {
 
   return (
     <main className="page">
-      <Topbar title="AI 원인 분석" subtitle="설비 다운타임 원인을 대화형으로 확인하세요." />
+      <Topbar
+        title="AI 원인 분석"
+        subtitle="설비 다운타임 원인을 대화형으로 확인하세요."
+        date={asOf}
+        onDateChange={setAsOf}
+      />
 
       <div className="ai-chat-grid">
         <aside className="ai-session-list">
@@ -191,7 +219,7 @@ export default function AiAnalysisChatPage() {
             <IconPlus /> 새 대화 시작
           </button>
           <div className="ai-session-items">
-            {sessions.length === 0 && <p className="helper-text">저장된 대화가 없습니다.</p>}
+            {sessions.length === 0 && !error && <p className="helper-text">저장된 대화가 없습니다.</p>}
             {sessions.map((s) => (
               <button
                 key={s.session_id}
@@ -219,12 +247,12 @@ export default function AiAnalysisChatPage() {
           </div>
 
           <div className="ai-chat-messages">
-            {!hydrating && turns.length === 0 && (
+            {!hydrating && turns.length === 0 && !error && (
               <>
                 <p className="helper-text">예: "EQ-021 프레스 라인의 다운타임 원인을 요약해줘"처럼 물어보세요.</p>
                 {reviewNeeded.length > 0 && (
                   <div className="ai-suggestions">
-                    <span className="ai-suggestions-label">확인이 필요한 설비</span>
+                    <span className="ai-suggestions-label">{asOf} 기준 확인이 필요한 설비</span>
                     <div className="ai-suggestion-list">
                       {reviewNeeded.map((item) => (
                         <button
@@ -232,7 +260,14 @@ export default function AiAnalysisChatPage() {
                           type="button"
                           className={`ai-suggestion-button ${item.status === "정지" ? "ai-suggestion-stop" : "ai-suggestion-warn"}`}
                           disabled={loading}
-                          onClick={() => void submitQuestion(`${item.equipment_id} ${item.equipment_type} 다운타임 원인을 분석해줘`)}
+                          // 버튼이 보여준 날짜와 실제 분석 기간이 어긋나지 않도록 같은 날짜를 그대로 넘긴다
+                          // (안 넘기면 backend가 기간을 "전체"로 잡는다).
+                          onClick={() =>
+                            void submitQuestion(`${item.equipment_id} ${item.equipment_type} 다운타임 원인을 분석해줘`, {
+                              date_from: asOf,
+                              date_to: asOf,
+                            })
+                          }
                         >
                           {item.status === "정지" ? <IconStopCircle /> : <IconTriangleWarning />}
                           {item.equipment_id} {item.equipment_type}

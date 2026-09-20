@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from .db import (
+    DatabaseUnavailableError,
     get_dashboard_summary,
     get_downtime_analysis,
     get_report,
@@ -31,7 +32,7 @@ from .db import (
     list_reports,
 )
 from .scope import ScopeError, resolve_scope
-from .services.llm import DowntimeReport, generate_report, get_model_name
+from .services.llm import AnalysisInfrastructureError, DowntimeReport, generate_report, get_model_name
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -160,7 +161,7 @@ class ReportRequest(BaseModel):
 # 경로가 두 개인 이유: 가이드 6쪽 공통 배포 구조가 `POST /api/agent`를 요구한다.
 # 기존 `/report`를 쓰는 프론트·연습 스크립트가 있으므로 지우지 않고 둘 다 받는다.
 # (FastAPI의 라우트 데코레이터는 원래 함수를 그대로 돌려주므로 이렇게 겹쳐 쓸 수 있다.)
-async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]] | None:
+async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]]:
     """({설비ID: 라인ID}, {설비ID: 종류}) — CSV/DB 모드 공통. 못 읽으면 None (검증만 건너뛴다)."""
     try:
         from mcp_server.tools.data_loader import load_equipment
@@ -173,7 +174,7 @@ async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]] | No
         )
     except Exception as exc:
         logger.warning("설비 마스터를 읽지 못해 설비 검증을 건너뜁니다: %s", exc)
-        return None
+        raise DatabaseUnavailableError("설비 마스터를 조회하지 못했습니다") from exc
 
 
 async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, str | None]:
@@ -182,7 +183,7 @@ async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, 
     try:
         return resolve_scope(
             request.message, request.line_id, request.equipment_id,
-            master[0] if master else None, session_scope, master[1] if master else None,
+            master[0], session_scope, master[1],
         )
     except ScopeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -203,18 +204,26 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
 
     # 조회 범위(라인·설비)를 확정한다 — "전체 라인/전체 설비"로 뭉뚱그려 저장하지 않는다.
     # 질문(message)이 있으면 질문 속 설비·라인과 세션의 이전 범위도 쓴다. docs/specs/report-scope.md
-    line_id, equipment_id = await _resolve_request_scope(request)
+    try:
+        line_id, equipment_id = await _resolve_request_scope(request)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    report = await generate_report(
-        line_id=line_id,
-        equipment_id=equipment_id,
-        date_from=request.date_from,
-        date_to=request.date_to,
-        session_id=request.session_id,
-        images=request.images,
-        message=request.message,
-        report_id=report_id,
-    )
+    try:
+        report = await generate_report(
+            line_id=line_id,
+            equipment_id=equipment_id,
+            date_from=request.date_from,
+            date_to=request.date_to,
+            session_id=request.session_id,
+            images=request.images,
+            message=request.message,
+            report_id=report_id,
+        )
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except AnalysisInfrastructureError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     # response_model=DowntimeReport라 본문 계약은 못 건드린다 — "상세 리포트 보기"가
     # 재조회 없이 바로 쓸 수 있게 id는 헤더로 얹어 준다 (CORS expose_headers 참고).
     response.headers["X-Report-Id"] = report_id
@@ -238,25 +247,37 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
 @app.get("/chat/sessions")
 async def get_chat_sessions(limit: int = 30) -> list[dict]:
     """AI 원인분석 화면 왼쪽 세션 목록용 — 세션별 첫 질문·마지막 활동 시각."""
-    return await list_chat_sessions(limit)
+    try:
+        return await list_chat_sessions(limit)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/chat/{session_id}")
 async def get_chat_history(session_id: str) -> list[dict]:
     """AI 원인분석 대화형 화면이 새로고침/재방문 때 이전 대화를 그대로 불러오는 곳."""
-    return await list_chat_turns(session_id)
+    try:
+        return await list_chat_turns(session_id)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/reports")
 async def get_reports(limit: int = 50) -> list[dict]:
     """리포트 목록 화면용 (요약 필드만, causes 등 큰 값은 상세 조회에서)."""
-    return await list_reports(limit)
+    try:
+        return await list_reports(limit)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/reports/{report_id}")
 async def get_report_detail(report_id: str) -> dict:
     """"상세 리포트 보기"·엑셀/PDF 다운로드가 쓰는 상세 조회."""
-    report = await get_report(report_id)
+    try:
+        report = await get_report(report_id)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if report is None:
         raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
     return report
@@ -268,7 +289,10 @@ async def get_dashboard(as_of: date | None = None) -> dict:
 
     as_of(YYYY-MM-DD)를 주면 그 날짜를 "오늘"로 보고 다시 집계한다 (상단 날짜 선택).
     """
-    return await get_dashboard_summary(as_of)
+    try:
+        return await get_dashboard_summary(as_of)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/downtime/analysis")
@@ -284,15 +308,23 @@ async def get_downtime_analysis_view(
         return await get_downtime_analysis(date_from, date_to, line_id, equipment_id, status)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/alerts")
 async def get_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     """알림센터 화면용 — downtime_log·reports에서 파생시킨 알림 (backend/db.py 참고)."""
-    return await list_alerts(limit, as_of)
+    try:
+        return await list_alerts(limit, as_of)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/equipment")
 async def get_equipment(as_of: date | None = None) -> list[dict]:
     """설비관리 화면용 — 설비별 상태·가동률·마지막 점검일 (backend/db.py에서 집계)."""
-    return await list_equipment_status(as_of)
+    try:
+        return await list_equipment_status(as_of)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

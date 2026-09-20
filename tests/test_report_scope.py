@@ -35,7 +35,23 @@ def test_ac05_후속_질문이_다른_설비를_말하면_그_설비가_우선()
 
 
 def test_ec04_요청에서_고른_조건이_질문보다_우선():
-    assert resolve_scope("EQ-012 봐줘", None, "EQ-001", LINES, None) == ("LINE-A", "EQ-001")
+    with pytest.raises(ScopeError):
+        resolve_scope("EQ-012 봐줘", None, "EQ-001", LINES, None)
+
+
+def test_ec05_설비와_요청_라인이_불일치하면_거부():
+    with pytest.raises(ScopeError):
+        resolve_scope("EQ-057 분석", "LINE-A", "EQ-057", LINES, None)
+
+
+def test_ec06_존재하지_않는_설비는_거부():
+    with pytest.raises(ScopeError):
+        resolve_scope("", "LINE-A", "EQ-999", LINES, None)
+
+
+def test_ec07_질문의_라인과_설비_마스터가_불일치하면_거부():
+    with pytest.raises(ScopeError):
+        resolve_scope("LINE-A EQ-057 분석", None, "EQ-057", LINES, None)
 
 
 def test_ac06_어디에도_범위가_없으면_에러():

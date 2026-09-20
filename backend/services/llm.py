@@ -7,7 +7,7 @@
   - LangChain 도구 호출 에이전트(create_tool_calling_agent + AgentExecutor)로
     mcp_server가 제공하는 MCP 도구를 불러와 정지 로그/에러코드 사전/정비이력을 조회하고 리포트 생성
   - 출력 계약 검증 (Pydantic: DowntimeReport, DowntimeCause) — PRD 5-2
-  - 실패 시 3단계 재시도/폴백: ① 프롬프트 재시도 → ② 축소 스키마 재시도 → ③ 고정 안전 응답
+  - 실패 시 3단계 재시도 후 명시적 분석 예외 전달
   - Langfuse 트레이스 남기기 (입력/출력/지연시간/토큰 사용량)
   - SKILL.md의 판단 규칙을 시스템 프롬프트로 주입
 
@@ -64,8 +64,6 @@ MCP_ENV_PASSTHROUGH = (
     "DATABASE_URL",
     "DATABASE_PUBLIC_URL",
 )
-
-FALLBACK_MESSAGE = "자동 분석 실패 — 원본 로그 확인 필요"
 
 AGENT_MAX_ITERATIONS = 8  # 도구 호출 무한루프 방지용 상한
 
@@ -685,16 +683,8 @@ def _root_causes(exc: BaseException) -> list[BaseException]:
     return flat
 
 
-def _fallback_report(equipment_id: str, line_id: str, period: str) -> DowntimeReport:
-    return DowntimeReport(
-        equipment_id=equipment_id,
-        line_id=line_id,
-        period=period,
-        causes=[],
-        unclassified_count=0,
-        confidence_note=FALLBACK_MESSAGE,
-        recommended_action=FALLBACK_MESSAGE,
-    )
+class AnalysisInfrastructureError(RuntimeError):
+    """분석 인프라 또는 분석 응답 생성이 실패해 리포트를 만들 수 없을 때."""
 
 
 async def _generate_with_retries(
@@ -707,7 +697,7 @@ async def _generate_with_retries(
     line_label: str,
     period: str,
 ) -> DowntimeReport:
-    """3단계 재시도/폴백 전략. 이 함수는 예외를 밖으로 내보내지 않고 항상 DowntimeReport를 반환한다."""
+    """3단계 출력 검증 재시도. 모두 실패하면 분석 예외를 호출자에게 전달한다."""
     full_schema = json.dumps(DowntimeReport.model_json_schema(), ensure_ascii=False)
     simplified_schema = json.dumps(_SimplifiedReport.model_json_schema(), ensure_ascii=False)
 
@@ -758,10 +748,11 @@ async def _generate_with_retries(
             recommended_action=simplified.recommended_action,
         )
     except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-        logger.error("3차 리포트 생성도 실패, 고정 안전 응답 반환: %s", exc)
+        logger.error("3차 리포트 생성도 실패: %s", exc)
 
-    # ── 4차: 모두 실패 — 고정 안전 응답 ──
-    return _fallback_report(equipment_label, line_label, period)
+    # 분석 실패를 정상적인 빈 리포트로 바꾸지 않는다. 라우터가 503으로 변환해
+    # 프론트의 기존 오류 처리 경로를 타게 하고, 저장/리포트 ID도 만들지 않는다.
+    raise AnalysisInfrastructureError("분석 결과를 생성하지 못했습니다")
 
 
 async def generate_report(
@@ -852,9 +843,9 @@ async def generate_report(
         # 마지막 원인을 남겨 둔다. 폴백 리포트만 보면 상태 코드를 알 수 없기 때문이다.
         _record_last_infra_error(roots)
         logger.error(
-            "MCP 연결 또는 에이전트 실행 중 오류, 고정 안전 응답 반환: %s", causes, exc_info=exc
+            "MCP 연결 또는 에이전트 실행 중 오류를 호출자에게 전달합니다: %s", causes, exc_info=exc
         )
-        return _fallback_report(equipment_label, line_label, period)
+        raise AnalysisInfrastructureError("분석 인프라에 연결할 수 없습니다") from exc
 
     # equipment_id/line_id/period는 사용자가 준 조건이 정답이다 — LLM 출력으로 덮어쓰지 않는다.
     report.equipment_id = equipment_label
@@ -867,14 +858,10 @@ async def generate_report(
         # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
         report.visual_findings = None
 
-    # 재시도를 다 써서 나온 고정 안전 응답은 저장하지 않는다 — 실패한 분석이 리포트 목록에
-    # 쌓이고, 다음 턴 LLM 맥락(load_chat_history)에 "자동 분석 실패" 답변으로 섞여 들어간다.
-    is_fallback = not report.causes and report.recommended_action == FALLBACK_MESSAGE
-
-    if report_id and not is_fallback:
+    if report_id:
         await save_report(report_id, report, session_id)
 
-    if session_id and not is_fallback:
+    if session_id:
         # ⚠️ 대화 기록(content)에는 '텍스트만' 넣는다 (content가 리스트여도 text 조각만).
         #    이미지 base64를 넣으면 다음 요청마다 그 덩어리가 통째로 다시 LLM에 전송돼
         #    비용·지연이 요청마다 누적된다 (tests/test_multimodal.py AC-10이 이걸 잡는다).

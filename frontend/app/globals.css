@@ -32,7 +32,7 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .spinner { width:22px; height:22px; border:3px solid #ddd8fa; border-top-color:#7565d5; border-radius:50%; animation:spin .8s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
 .report-heading,.cause-title,.cause-top,.condition-row { display:flex; align-items:center; justify-content:space-between; gap:12px; } .report-period { color:#7565d5; font-size:13px; } .condition-row { justify-content:flex-start; padding:12px 0 20px; color:var(--muted); font-size:13px; } .condition-row span { padding-right:16px; border-right:1px solid var(--line); } .condition-row span:last-child { border:0; }
 .report-top-action { margin-bottom:8px; }
-.recommendation-panel,.note-panel,.data-panel { border-radius:13px; padding:15px 17px; margin-top:12px; } .recommendation-panel { background:var(--purple); } .note-panel { background:var(--blue); } .data-panel { background:var(--teal); } .recommendation-panel p,.note-panel p,.data-panel p { margin:0; line-height:1.65; font-size:14px; }
+.recommendation-panel,.note-panel,.data-panel { border-radius:13px; padding:15px 17px; margin-top:12px; } .recommendation-panel { background:var(--purple); } .note-panel { background:var(--blue); } .data-panel { background:var(--teal); } .recommendation-panel p,.note-panel p,.data-panel p { margin:0; line-height:1.65; font-size:14px; overflow-wrap:anywhere; }
 .cause-section { margin-top:24px; } .cause-title { border-bottom:1px solid var(--line); padding-bottom:10px; } .cause-title h3 { margin:0; } .cause-title span { color:var(--muted); font-size:12px; } .cause-list { display:grid; gap:12px; margin-top:14px; } .cause-item { border:1px solid var(--line); border-radius:13px; padding:16px; } .cause-top { justify-content:flex-start; } .cause-code { font-weight:800; } .severity,.confirmation { border-radius:99px; padding:4px 9px; font-size:11px; font-weight:700; } .severity-high { color:#a83e3e; background:#ffe3e3; } .severity-medium { color:#98700b; background:#fff2c7; } .severity-low { color:#397b50; background:#dff3e4; } .severity-unknown { color:#6b7386; background:#eef0f4; } .confirmation { color:#657084; background:#edf0f4; margin-left:auto; } details { color:#657084; font-size:13px; } summary { cursor:pointer; } details p { margin:10px 0 0; color:#536078; line-height:1.6; }
 .new-analysis-action { display:flex; justify-content:center; margin-top:28px; }
 @media (max-width:760px) { .app-shell { padding:28px 16px 56px; } .content-grid { grid-template-columns:1fr; } .report-heading,.report-heading-actions { align-items:flex-start; flex-direction:column; } .date-range-fields { grid-template-columns:1fr; gap:12px; } .date-separator { display:none; } .input-screen,.screen-panel { margin-top:6vh; } .status-actions { flex-wrap:wrap; } }
@@ -187,7 +187,7 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .detail-row:hover td { background:#fafaff; }
 .events-row-chevron { transition:transform .15s ease; }
 .events-row-chevron-open { transform:rotate(90deg); }
-.detail-row-evidence td { background:#faf9ff; color:#5b667c; font-size:12.5px; line-height:1.6; padding:12px 14px; white-space:normal; }
+.detail-row-evidence td { background:#faf9ff; color:#5b667c; font-size:12.5px; line-height:1.6; padding:12px 14px; white-space:normal; overflow-wrap:anywhere; }
 .detail-row-evidence strong { color:#4a5468; margin-right:6px; }
 
 .filter-row-4 { grid-template-columns:repeat(4, minmax(0,1fr)); }
@@ -275,8 +275,15 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .shared-avatar-blue { background:#5b9be0; }
 .shared-avatar-peach { background:#e0916a; }
 .shared-report-body { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
-.shared-report-name { font-size:13px; font-weight:800; color:var(--ink); }
-.shared-report-title { font-size:12.5px; color:#5b667c; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shared-report-name { font-size:13px; font-weight:800; color:var(--ink); min-width:0; overflow-wrap:anywhere; }
+/* white-space:nowrap로 한 줄 말줄임을 노렸지만, 세로 flex(column)의 자식은 가로 flex의
+   flex:1 자식과 달리 min-width가 자동으로 0이 되지 않는다 — 긴 recommended_action
+   텍스트의 최소너비(줄바꿈 없는 전체 길이)만큼 이 span 자체가 넓어져 카드 밖으로
+   밀려났다. min-width:0으로 눌러 주고, 한 줄 말줄임 대신 2줄까지 보여준다. */
+.shared-report-title {
+  font-size:12.5px; color:#5b667c; min-width:0; overflow-wrap:anywhere;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
 .shared-report-date { font-size:11.5px; color:#9aa3b5; }
 
 /* ── 설비 관리 화면 ───────────────────────────────────────────── */
@@ -291,6 +298,12 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .equipment-summary-label { display:block; font-size:13px; color:var(--muted); font-weight:600; margin-bottom:6px; }
 .equipment-summary-value { font-size:26px; font-weight:800; color:var(--ink); margin-bottom:6px; }
 .equipment-summary-note { margin:0; font-size:12px; color:var(--muted); }
+.live-clock { display:inline-flex; align-items:center; gap:7px; margin:-14px 0 20px; font-size:12.5px; font-weight:600; color:var(--muted); font-variant-numeric:tabular-nums; }
+.live-clock-dot { width:7px; height:7px; border-radius:50%; background:var(--success); animation:live-pulse 2s ease-in-out infinite; }
+@keyframes live-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+.equipment-active-info { display:flex; flex-direction:column; gap:3px; margin:6px 0 12px; padding:8px 10px; border-radius:9px; background:var(--danger-bg); }
+.equipment-active-cause { font-size:12px; font-weight:700; color:#a83e3e; }
+.equipment-active-until { font-size:11.5px; font-weight:600; color:var(--danger); font-variant-numeric:tabular-nums; }
 
 .status-filter-row { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:20px; }
 .status-filter-pill { display:inline-flex; align-items:center; gap:8px; border:1px solid var(--line); background:#fff; border-radius:99px; padding:9px 16px; font-size:13px; font-weight:700; color:#5b667c; cursor:pointer; }
@@ -430,10 +443,13 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-answer-headline { margin:0 0 14px; font-size:14.5px; }
 .ai-answer-headline strong { color:var(--accent); }
 .ai-answer-details { display:grid; gap:10px; margin-bottom:16px; }
+/* "분석 참고 사항" 값(confidence_note)이 길면(수백 자) flex 자식은 기본적으로
+   줄어들지 않고 내용 그대로의 너비를 요구해 카드 밖으로 삐져나간다 — dd에
+   min-width:0으로 줄어들 수 있게 하고 overflow-wrap으로 긴 토큰도 끊어서 감싼다. */
 .ai-answer-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; font-size:13px; }
-.ai-answer-row dt { display:inline-flex; align-items:center; gap:6px; color:#5b667c; font-weight:600; }
+.ai-answer-row dt { display:inline-flex; align-items:center; gap:6px; color:#5b667c; font-weight:600; flex:0 0 auto; }
 .ai-answer-row dt svg { width:14px; height:14px; color:var(--accent); }
-.ai-answer-row dd { margin:0; font-weight:700; color:var(--ink); }
+.ai-answer-row dd { margin:0; font-weight:700; color:var(--ink); flex:1 1 auto; min-width:0; overflow-wrap:anywhere; text-align:right; }
 .ai-report-button { font-size:12.5px; padding:9px 14px; }
 .ai-chat-time { display:block; font-size:11px; color:#9aa3b5; margin:6px 0 18px 56px; }
 .ai-chat-time-user { text-align:right; margin:6px 56px 18px 0; }

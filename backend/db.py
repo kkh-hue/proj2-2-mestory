@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 _SCHEMA_READY = False
 
 
+class DatabaseUnavailableError(RuntimeError):
+    """DB 연결 또는 조회 실패를 API 계층에 알리기 위한 공통 예외."""
+
+
 def _get_database_url() -> str | None:
     return os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL")
 
@@ -41,8 +45,11 @@ def _get_database_url() -> str | None:
 async def _connect() -> psycopg.AsyncConnection:
     url = _get_database_url()
     if not url:
-        raise RuntimeError("DATABASE_URL(또는 DATABASE_PUBLIC_URL)이 설정되지 않았습니다.")
-    return await psycopg.AsyncConnection.connect(url, connect_timeout=10)
+        raise DatabaseUnavailableError("DATABASE_URL(또는 DATABASE_PUBLIC_URL)이 설정되지 않았습니다.")
+    try:
+        return await psycopg.AsyncConnection.connect(url, connect_timeout=10)
+    except Exception as exc:
+        raise DatabaseUnavailableError("데이터베이스에 연결하지 못했습니다") from exc
 
 
 async def init_db() -> None:
@@ -130,6 +137,7 @@ async def save_report(report_id: str, report: Any, session_id: str | None) -> No
             )
     except Exception as exc:
         logger.warning("리포트 저장 실패 (report_id=%s): %s", report_id, exc)
+        raise DatabaseUnavailableError("데이터베이스에 리포트를 저장하지 못했습니다") from exc
 
 
 async def get_session_scope(session_id: str) -> tuple[str | None, str | None] | None:
@@ -148,7 +156,7 @@ async def get_session_scope(session_id: str) -> tuple[str | None, str | None] | 
             row = await cur.fetchone()
     except Exception as exc:
         logger.warning("세션 범위 조회 실패 (session_id=%s): %s", session_id, exc)
-        return None
+        raise DatabaseUnavailableError("데이터베이스에서 세션 범위를 조회하지 못했습니다") from exc
     if row is None:
         return None
     line_id = row[0] if row[0] and row[0].startswith("LINE-") else None
@@ -176,6 +184,7 @@ async def save_message(
             )
     except Exception as exc:
         logger.warning("대화 메시지 저장 실패 (session_id=%s): %s", session_id, exc)
+        raise DatabaseUnavailableError("데이터베이스에 대화 메시지를 저장하지 못했습니다") from exc
 
 
 async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessage]:
@@ -190,7 +199,7 @@ async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessag
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 기록 조회 실패 (session_id=%s): %s", session_id, exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 기록을 조회하지 못했습니다") from exc
 
     messages: list[BaseMessage] = [
         HumanMessage(content=content) if role == "user" else AIMessage(content=content)
@@ -236,7 +245,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 턴 조회 실패 (session_id=%s): %s", session_id, exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 기록을 조회하지 못했습니다") from exc
 
     turns: list[dict] = []
     for (role, content, display_content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
@@ -295,7 +304,7 @@ async def list_chat_sessions(limit: int = 30) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 세션 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 세션을 조회하지 못했습니다") from exc
 
     return [
         {
@@ -321,7 +330,7 @@ async def list_reports(limit: int = 50) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("리포트 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 리포트 목록을 조회하지 못했습니다") from exc
 
     return [
         {
@@ -346,7 +355,7 @@ async def get_report(report_id: str) -> dict | None:
             row = await cur.fetchone()
     except Exception as exc:
         logger.warning("리포트 조회 실패 (report_id=%s): %s", report_id, exc)
-        return None
+        raise DatabaseUnavailableError("데이터베이스에서 리포트를 조회하지 못했습니다") from exc
 
     if row is None:
         return None
@@ -378,6 +387,26 @@ def _kst_midnight(day: date) -> datetime:
     return datetime(day.year, day.month, day.day, tzinfo=_KST)
 
 
+def _cutoff(as_of: date | None) -> datetime:
+    """"이 시각 이전에 시작한 일만 일어난 일"로 보는 기준 시각 (시간대 없는 KST 값).
+
+    오늘(as_of를 안 줬거나 오늘 날짜)이면 진짜 지금 — 아직 오지 않은 시각의 이벤트는 넣지 않고,
+    자정을 넘겨 곧 끝날 다운타임 때문에 "하루 끝" 기준으로 정지가 되는 일도 없앤다.
+    지난 날짜(또는 미래 날짜)는 그 날이 끝나는 시점(다음 날 00:00)의 상태를 본다.
+    downtime_log.start_time은 시간대 없는 KST 값이라 이 값과 그대로 비교한다.
+    """
+    now = datetime.now(_KST)
+    day = as_of or now.date()
+    if day == now.date():
+        return now.replace(tzinfo=None)
+    return datetime(day.year, day.month, day.day) + timedelta(days=1)
+
+
+def _aware(moment: datetime) -> datetime:
+    """_cutoff 값을 reports.created_at(timestamptz)과 비교할 수 있게 KST 시간대를 붙인다."""
+    return moment.replace(tzinfo=_KST)
+
+
 def _delta(today: float, yesterday: float) -> dict:
     """"전일 대비" 배지 하나를 만든다. 어제 값이 0이면 방향을 판단할 기준이 없어 0%로 둔다."""
     if yesterday == 0:
@@ -390,8 +419,13 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
     """as_of를 안 주면 오늘 기준(기존과 동일). 주면 "그 날짜를 오늘로 보고" 어제 대비·
     최근 7일 추이를 그 날짜 기준으로 다시 계산한다 (대시보드 상단 날짜 선택용)."""
     day_start = as_of or _today_kst()
-    day_end = day_start + timedelta(days=1)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
+    cutoff = _cutoff(as_of)  # 배타적 상한 — 없으면 미래 날짜 데이터가 새 나간다
     yesterday_start = day_start - timedelta(days=1)
+    # "전일 대비"는 같은 경과 시간끼리 비교한다. 오늘 오후 4시까지를 어제 하루 전체와 견주면
+    # 낮에는 항상 다운타임이 줄어든 것처럼 나온다. 지난 날짜는 경과가 하루라 어제 전체와 같다.
+    yesterday_cutoff = datetime(yesterday_start.year, yesterday_start.month, yesterday_start.day) + (
+        cutoff - datetime(day_start.year, day_start.month, day_start.day)
+    )
     trend_start = day_start - timedelta(days=6)
 
     try:
@@ -415,10 +449,10 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 from downtime_log
                 """,
                 (
-                    day_start, day_end,
-                    yesterday_start, day_start,
-                    day_start, day_end,
-                    yesterday_start, day_start,
+                    day_start, cutoff,
+                    yesterday_start, yesterday_cutoff,
+                    day_start, cutoff,
+                    yesterday_start, yesterday_cutoff,
                 ),
             )
             today_downtime, yesterday_downtime, today_avg_recovery, yesterday_avg_recovery = await kpi_cur.fetchone()
@@ -434,8 +468,8 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 from reports
                 """,
                 (
-                    _kst_midnight(day_start), _kst_midnight(day_end),
-                    _kst_midnight(yesterday_start), _kst_midnight(day_start),
+                    _kst_midnight(day_start), _aware(cutoff),
+                    _kst_midnight(yesterday_start), _aware(yesterday_cutoff),
                 ),
             )
             today_reports, yesterday_reports = await reports_cur.fetchone()
@@ -449,7 +483,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 group by day, line_id
                 order by day
                 """,
-                (trend_start, day_end),
+                (trend_start, cutoff),
             )
             trend_rows = await trend_cur.fetchall()
 
@@ -468,7 +502,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 order by d.start_time desc
                 limit 10
                 """,
-                (day_end,),
+                (cutoff,),
             )
             event_rows = await events_cur.fetchall()
 
@@ -476,19 +510,12 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
                 "select id, equipment_id, line_id, period, causes, unclassified_count, "
                 "       confidence_note, recommended_action, visual_findings, used_image, created_at "
                 "from reports where created_at < %s order by created_at desc limit 1",
-                (_kst_midnight(day_end),),
+                (_aware(cutoff),),
             )
             latest_report_row = await latest_report_cur.fetchone()
     except Exception as exc:
         logger.warning("대시보드 집계 실패: %s", exc)
-        return {
-            "kpi": {"today_downtime_min": 0, "avg_recovery_min": 0, "reports_today": 0, "equipment_count": 0,
-                    "utilization_pct": 100.0, "downtime_delta": _delta(0, 0), "recovery_delta": _delta(0, 0),
-                    "reports_delta": _delta(0, 0), "utilization_delta": _delta(0, 0)},
-            "trend": {"labels": [], "lines": []},
-            "recent_events": [],
-            "latest_report": None,
-        }
+        raise DatabaseUnavailableError("데이터베이스에서 대시보드 데이터를 조회하지 못했습니다") from exc
 
     # 라인별 일별 다운타임을 "라벨(날짜) × 라인" 표로 펼친다 — 값 없는 칸은 0.
     days = sorted({row[0] for row in trend_rows})
@@ -701,6 +728,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     """
     day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
+    cutoff = _cutoff(as_of)
     window_start = day_end - timedelta(days=7)
     recent_start = day_end - timedelta(days=1)
 
@@ -727,7 +755,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 where d.start_time < %s and (d.end_time is null or d.start_time >= %s)
                 order by d.start_time desc
                 """,
-                (recent_start, day_end, window_start),
+                (recent_start, cutoff, window_start),
             )
             downtime_rows = await downtime_cur.fetchall()
 
@@ -738,19 +766,19 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 from reports r left join equipment_master e on e.equipment_id = r.equipment_id
                 where r.created_at < %s order by r.created_at desc limit %s
                 """,
-                (_kst_midnight(recent_start), _kst_midnight(day_end), limit),
+                (_kst_midnight(recent_start), _aware(cutoff), limit),
             )
             report_rows = await report_cur.fetchall()
 
             # 이미 리포트로 분석된 정지의 원본 "정지 감지" 알림을 가리기 위한 범위 목록
             scope_cur = await conn.execute(
                 "select line_id, equipment_id, period from reports where created_at < %s",
-                (_kst_midnight(day_end),),
+                (_aware(cutoff),),
             )
             analyzed_scopes = await scope_cur.fetchall()
     except Exception as exc:
         logger.warning("알림 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 알림을 조회하지 못했습니다") from exc
 
     downtime_alerts: list[dict] = []
     for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
@@ -851,9 +879,14 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
     - 가동률: as_of 기준 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
       데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
     - as_of를 안 주면 오늘 기준(기존과 동일).
+    - active_until: 지금 진행 중인 다운타임 중 가장 빨리 끝나는 것의 종료 시각(ISO,
+      끝이 정해진 것만). 프론트가 폴링(1분) 대신 이 시각에 정확히 맞춰 다시 조회해서
+      "정지 → 정상"이 그 순간 바로 반영되게 하는 용도 — docs/specs 없이 as_of=None(오늘)
+      화면에서만 의미 있다. 끝이 안 정해졌거나(end_time is null) 정지가 아니면 None.
     """
     day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
+    cutoff = _cutoff(as_of)
     window_start = day_end - timedelta(days=7)
 
     try:
@@ -869,6 +902,20 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
                         where d.equipment_id = e.equipment_id and d.start_time < %s
                           and (d.end_time is null or d.end_time >= %s)
                     ) as is_down,
+                    (select min(d.end_time) from downtime_log d
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and d.end_time is not null and d.end_time >= %s) as active_until,
+                    -- 지금 정지 중인 원인 — is_down 판정과 같은 조건(활성 다운타임) 중
+                    -- 가장 최근에 시작한 것 하나를 대표로 보여준다. 카드에 "왜 정지인지" 적기 위함.
+                    (select ec.description from downtime_log d
+                     left join error_code_dict ec on ec.error_code = d.error_code
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and (d.end_time is null or d.end_time >= %s)
+                     order by d.start_time desc limit 1) as active_cause_description,
+                    (select d.error_code from downtime_log d
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and (d.end_time is null or d.end_time >= %s)
+                     order by d.start_time desc limit 1) as active_cause_code,
                     coalesce(sum(d2.downtime_min) filter (
                         where d2.start_time >= %s and d2.start_time < %s and d2.downtime_min > 0
                     ), 0) as recent_downtime_min
@@ -877,15 +924,16 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
                 group by e.equipment_id, e.line_id, e.equipment_type
                 order by e.equipment_id
                 """,
-                (day_end, day_end, day_end, window_start, day_end),
+                (cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, window_start, cutoff),
             )
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("설비 상태 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 설비 상태를 조회하지 못했습니다") from exc
 
     result: list[dict] = []
-    for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min in rows:
+    for (equipment_id, line_id, equipment_type, last_checked, is_down, active_until,
+         active_cause_description, active_cause_code, recent_downtime_min) in rows:
         utilization_pct = max(0.0, min(100.0, 100.0 - (float(recent_downtime_min or 0) / _RECENT_WINDOW_MINUTES * 100)))
         if is_down:
             status = "정지"
@@ -893,6 +941,9 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
             status = "주의"
         else:
             status = "정상"
+        # 코드(E-102)가 아니라 사람이 읽는 이름을 우선 보여준다 — 사전에 없는 코드는
+        # 지어내지 않고 코드 그대로 둔다(list_alerts와 같은 원칙).
+        active_cause = (active_cause_description or active_cause_code) if is_down else None
         result.append({
             "equipment_id": equipment_id,
             "line_id": line_id,
@@ -900,5 +951,9 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
             "status": status,
             "utilization_pct": round(utilization_pct, 1),
             "last_checked": last_checked.isoformat() if last_checked else None,
+            # downtime_log의 시각은 시간대 없는 값(이미 KST)이라, KST를 명시해서 내보내야
+            # 브라우저가 자기 로컬 시간대로 잘못 해석하지 않는다.
+            "active_until": _aware(active_until).isoformat() if active_until else None,
+            "active_cause": active_cause,
         })
     return result
