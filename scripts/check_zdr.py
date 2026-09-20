@@ -102,12 +102,18 @@ def endpoints(client: httpx.Client, key: str, model: str):
     if not eps:
         print("  엔드포인트 정보 없음")
         return
-    print(f"  {'provider':28} {'tools':6} {'컨텍스트':>8}")
+    print(f"  {'provider':22} {'tools':6} {'resp_fmt':9} {'구조화출력':10} {'ZDR':5}")
     for e in eps:
         params = e.get("supported_parameters") or []
-        print(f"  {str(e.get('provider_name'))[:28]:28} "
+        print(f"  {str(e.get('provider_name'))[:22]:22} "
               f"{'O' if 'tools' in params else 'X':6} "
-              f"{str(e.get('context_length') or '-'):>8}")
+              f"{'O' if 'response_format' in params else 'X':9} "
+              f"{'O' if 'structured_outputs' in params else 'X':10} "
+              f"{'O' if e.get('supports_implicit_caching') is not None and e.get('is_zdr') else ('O' if e.get('is_zdr') else '?'):5}")
+    # 원본을 그대로 한 번 보여준다 — 위 표에 없는 필드가 있을 수 있다
+    import pprint
+    print("\n  [첫 엔드포인트 원본]")
+    pprint.pprint({k: v for k, v in eps[0].items() if k != "pricing"}, indent=4, width=110, compact=True)
 
 
 def probe_like_app(client: httpx.Client, key: str, model: str):
@@ -149,6 +155,85 @@ def probe_like_app(client: httpx.Client, key: str, model: str):
         print("     ⚠️ 잘렸다 — MAX_OUTPUT_TOKENS를 올리거나 reasoning effort를 낮춰야 한다")
 
 
+# 구조화 출력 시험용 작은 스키마. 실제 DowntimeReport가 아니라
+# "자연어 문장 안에 따옴표가 섞이는 칸"만 흉내 낸다 — 깨지던 자리가 거기다.
+JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "downtime_note",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "equipment_id": {"type": "string"},
+                "confidence_note": {"type": "string"},
+                "causes": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "error_code": {"type": "string"},
+                            "evidence": {"type": "string"},
+                        },
+                        "required": ["error_code", "evidence"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["equipment_id", "confidence_note", "causes"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+
+def probe_structured(client: httpx.Client, key: str, model: str):
+    """구조화 출력(response_format)이 tools·ZDR과 함께 되는지.
+
+    왜 보나: 배포본이 JSONDecodeError(Expecting ',' delimiter)로 1·2차 모두 실패하고
+    축소 스키마까지 내려갔다. 모델이 자연어 칸에 따옴표를 그대로 써서 JSON이 깨진 것이다.
+    프롬프트로는 안 고쳐진다(2차 재시도도 같은 자리에서 깨졌다).
+    response_format을 쓰면 모델이 스키마에 맞는 JSON만 낼 수 있어 이 유형이 사라진다.
+    단, tools와 함께 쓸 수 있는지는 제공자마다 다르므로 확인이 필요하다.
+    """
+    base = {
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": ("EQ-001 정지 원인 리포트를 JSON으로 만들어줘. "
+                        "evidence에는 코드명을 큰따옴표로 인용해서 여러 개 나열해라."),
+        }],
+        "temperature": 0,
+        "max_tokens": 2000,
+        "provider": {"zdr": True},
+        "reasoning": {"effort": "low", "exclude": True},
+        "response_format": JSON_SCHEMA,
+    }
+
+    simple = {**base, "response_format": {"type": "json_object"}}
+    for label, body in (("json_schema  · tools 없이", dict(base)),
+                        ("json_schema  · tools 함께", {**base, "tools": TOOLS}),
+                        ("json_object  · tools 없이", dict(simple)),
+                        ("json_object  · tools 함께", {**simple, "tools": TOOLS})):
+        r = client.post(f"{BASE}/chat/completions",
+                        headers={"Authorization": f"Bearer {key}"}, json=body, timeout=90)
+        if r.status_code != 200:
+            print(f"  [{label}]  ❌ {r.status_code}  {r.text[:300]}")
+            continue
+        d = r.json()
+        ch = (d.get("choices") or [{}])[0]
+        content = (ch.get("message") or {}).get("content") or ""
+        if (ch.get("message") or {}).get("tool_calls"):
+            print(f"  [{label}]  ✅ 200  provider={d.get('provider')}  (도구부터 호출 — 정상)")
+            continue
+        try:
+            json.loads(content)
+            ok = "✅ JSON 파싱 성공"
+        except Exception as exc:
+            ok = f"❌ JSON 깨짐: {exc}"
+        print(f"  [{label}]  ✅ 200  provider={d.get('provider')}  {ok}")
+
+
 def main() -> int:
     load_dotenv(REPO_ROOT / ".env")
     ap = argparse.ArgumentParser()
@@ -175,6 +260,9 @@ def main() -> int:
 
         print("\n── 우리 서비스와 똑같은 요청 (이게 되어야 실제로 동작한다) ──")
         probe_like_app(client, key, args.model)
+
+        print("\n── 구조화 출력(response_format)이 tools·ZDR과 함께 되나 ──")
+        probe_structured(client, key, args.model)
 
     print("\n읽는 법:")
     print("  tools=O 인 줄만 200이면  → 우리 서비스는 정상 동작한다")
