@@ -239,6 +239,42 @@ def _install_tool_call_passthrough() -> None:
         logger.warning("도구 호출 추가 필드 전달 설정 실패: %s", exc)
 
 
+# ─────────────────────────────────────────────
+# OpenRouter에만 붙는 요청 옵션 (다른 provider에는 보내지 않는다)
+#
+# ① ZDR(Zero Data Retention) — 교육과정 보안 정책이라 반드시 지켜야 한다.
+#    계정 설정으로도 걸 수 있지만, 요청에 명시해야 어느 키로 돌려도 보장된다.
+#
+#    ⚠️ 모델 선택이 여기에 묶인다. tools를 보내면 OpenRouter가
+#       'tool calling 되는 엔드포인트'로 한 번 거르고, 그다음 'ZDR 되는 곳'으로
+#       또 거른다. openai/gpt-4o-mini는 tools를 지원하는 곳이 OpenAI 하나뿐인데
+#       그게 ZDR에서 빠져 두 번째 필터에서 후보가 0이 된다:
+#         404 "No endpoints found matching your data policy (Zero data retention)"
+#         routing_funnel: 3개 → (tool 호환) 1개 → (data policy) 실패
+#       openai/gpt-5-mini는 엔드포인트 4개가 모두 tools를 지원해 ZDR로도 동작한다.
+#       모델을 바꿀 때는 scripts/check_zdr.py로 tools+ZDR 조합을 반드시 먼저 확인할 것.
+#
+# ② reasoning — gpt-5 계열은 추론 토큰을 쓴다. 그냥 두면 그 토큰이
+#    max_tokens(=MAX_OUTPUT_TOKENS) 예산을 먼저 써버려 리포트 JSON이 잘린다.
+#    Gemini에서 이미 같은 일을 겪었다(답이 빈 문자열이나 'E' 한 글자로 나옴).
+#    effort를 낮추고, exclude로 추론 내용 자체는 응답에서 뺀다.
+#    MESTORY_LLM_REASONING_EFFORT가 비어 있으면 아예 보내지 않는다(비추론 모델용).
+
+
+def _openrouter_extra_body() -> dict | None:
+    if "openrouter.ai" not in get_base_url():
+        return None
+
+    body: dict = {}
+    if os.getenv("MESTORY_LLM_ZDR", "1") != "0":
+        body["provider"] = {"zdr": True}
+
+    effort = os.getenv("MESTORY_LLM_REASONING_EFFORT", "").strip()
+    if effort:
+        body["reasoning"] = {"effort": effort, "exclude": True}
+    return body or None
+
+
 def _build_llm() -> ChatOpenAI:
     # MESTORY_LLM_API_KEY가 있으면 그걸 쓰고, 없으면 기존 OPENROUTER_API_KEY를 쓴다
     # (기존 설정 그대로 두고도 돌아가게).
@@ -254,6 +290,7 @@ def _build_llm() -> ChatOpenAI:
         base_url=get_base_url(),
         temperature=0,
         max_tokens=MAX_OUTPUT_TOKENS,
+        extra_body=_openrouter_extra_body(),
     )
 
 
