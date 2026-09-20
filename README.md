@@ -4,10 +4,11 @@
 
 ## 🚀 배포 (Railway)
 
-- **프론트엔드**: https://mestory-app.up.railway.app — `/downtime/report`가 실제 `POST /report` 연동(강경희 님 구현). `/`(대시보드 홈)·`/downtime`(다운타임 분석)은 목업 데이터 화면(9/18 범위 추가, F-10 참고). `/reports`·`/equipment`·`/alerts`는 자리만 있음
+- **프론트엔드**: https://mestory-app.up.railway.app — 전 화면이 백엔드 API에 연동돼 있습니다: `/` 대시보드(`GET /dashboard`) · `/downtime` 다운타임 분석(`GET /downtime/analysis`) · `/downtime/ai` AI 원인 분석 대화형 화면(`POST /report`, 이미지 첨부 가능) · `/downtime/report` 분석 실행(`POST /report`) · `/reports` 리포트 목록·상세 · `/equipment` 설비 현황 · `/alerts` 알림. 대시보드·분석·알림·설비 화면의 값은 `downtime_log`·`reports`에서 집계한 실데이터입니다.
 - **백엔드 API**: https://mestory.up.railway.app
   - **헬스체크**: `GET /health` → `{"status":"ok"}`
   - **리포트 생성**: `POST /report`
+  - **그 외 조회 API**: `GET /chat/sessions` · `GET /chat/{session_id}` · `GET /reports` · `GET /reports/{report_id}` · `GET /dashboard` · `GET /downtime/analysis` · `GET /alerts` · `GET /equipment`
 
 ```bash
 curl https://mestory.up.railway.app/health
@@ -19,9 +20,9 @@ curl -X POST https://mestory.up.railway.app/report \
 
 ## 🤖 LLM 출력 계약 (필수 조건 3)
 
-`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 실패 시 3단계 재시도/폴백(프롬프트 재시도 → 축소 스키마 → 고정 안전 응답)을 거칩니다.
+`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유, 기본 모델 `openai/gpt-5-mini`) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 실패하면 3단계로 재시도합니다(1차 생성 → 프롬프트 재시도 → 축소 스키마 재시도). **모두 실패하면 고정 안전 응답으로 덮지 않고 분석 예외를 던지며, `POST /report`는 HTTP 503을 반환합니다.** 사용자가 준 조건(`equipment_id`·`line_id`·`period`)과 `used_image`는 LLM 출력을 믿지 않고 코드가 덮어씁니다.
 
-- 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`(114행), `executor.ainvoke(...)`(약 200행)
+- 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`, `_run_agent_json()` 안의 `executor.ainvoke(...)`, 재시도 사다리 `_generate_with_retries()`
 - **실제 호출 검증**: 위 배포 URL의 `/report`를 직접 호출하면 실제 LLM이 생성한 원인 분석 리포트가 반환됩니다 (Postgres 실데이터 기반). Langfuse에도 트레이스(입력/출력/비용/지연)가 남습니다.
 - 상세 테스트 로그·발견한 버그·수정 내역: [backend/README.md](./backend/README.md) 5~7번 항목 참고
 
@@ -110,38 +111,46 @@ git push                             # PR이 자동 갱신됨
 
 ```
 backend/                  FastAPI 백엔드
-├── main.py                 진입점 (/health)
-├── services/llm.py         LLM 호출 단일 창구 — 출력 계약 검증·재시도/폴백·Langfuse 트레이스
+├── main.py                 진입점 — /health · POST /report(=/api/agent) · 대화·리포트·대시보드·분석·알림·설비 조회 API
+├── db.py                   Postgres 저장·집계 (reports·chat_messages, 대시보드·알림·설비 집계)
+├── analysis.py             다운타임 분석 화면(GET /downtime/analysis)의 집계 로직 (순수 함수)
+├── scope.py                조회 범위(라인·설비) 확정 — resolve_scope()
+├── services/llm.py         LLM 호출 단일 창구 — 출력 계약 검증·3단계 재시도·실패 시 예외·Langfuse 트레이스
 └── README.md                진행상황
 
 mcp_server/                MCP 서버
-├── server.py                FastMCP 진입점
+├── server.py                FastMCP 진입점 (도구 3개: get_downtime_logs · get_error_code_info · get_maintenance_history)
 ├── tools/
-│   ├── data_loader.py        CSV 데이터 로딩 (추후 DB 전환 시 여기만 수정)
-│   └── downtime.py           조건별 정지 기록 조회
+│   ├── data_loader.py        CSV/DB 데이터 로딩 (MESTORY_DATA_SOURCE로 전환)
+│   ├── downtime.py           조건별 정지 기록 조회 (계획정지·미등록 코드 등 주의 딱지 부여)
+│   ├── error_codes.py        에러코드 사전 조회 (미등록 코드는 found:false)
+│   └── maintenance.py        설비별 정비이력 조회
 └── README.md                 진행상황
 
-frontend/                  Next.js — 대시보드 홈·다운타임 분석(F-10, 목업) + 분석 실행(F-07, 실연동)
-├── app/                     페이지 — /(대시보드) /downtime(목업) /downtime/report(실연동) /reports /equipment /alerts
-├── components/              Sidebar / Topbar / KpiCard / TrendChart / AiSummaryCard / EventsTable
-│                            / CauseBreakdown / InsightPanel / FilterCard (목업) · ChatWindow / ChatInput /
-│                            ReportCard / CauseList / CauseDetailTable (분석 실행, 실연동)
-├── lib/api.ts               backend 호출 단일 창구 (/downtime/report에서 사용)
-├── lib/mockDashboard.ts, mockDowntimeAnalysis.ts   대시보드·다운타임 분석 목업 데이터 — 집계 API 생기면 교체 대상
-├── types/report.ts          backend 출력 계약과 1:1 매칭되는 타입
+frontend/                  Next.js — 전 화면 백엔드 API 연동
+├── app/                     페이지 — /(대시보드) /downtime(다운타임 분석) /downtime/ai(AI 원인 분석 대화) /downtime/report(분석 실행) /reports(+/[id]) /equipment /alerts
+├── components/              화면 컴포넌트 (Sidebar·Topbar·KpiCard·TrendChart·ChatWindow·ChatInput·ReportCard·CauseList·EquipmentBoard·AlertBoard 등)
+├── lib/                     api.ts(backend 호출 단일 창구) · labels.ts · date.ts · reportCsv.ts · useLiveTick.ts · useNowTick.ts
+├── types/                   backend 응답과 1:1 매칭되는 타입 (report.ts · dashboard.ts · downtimeAnalysis.ts · alert.ts · equipment.ts)
 └── README.md                진행상황
 
-skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석)
-evals/                      평가셋 (dataset.jsonl, 최소 30건)
+skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석) — 프롬프트에 통째로 주입
+evals/                      평가셋 (dataset.jsonl 30건 · dataset_multimodal.jsonl 10건) + runs/ 측정 기록
 EVAL_REPORT.md              개선 전후 지표
+tests/                      pytest — docs/specs의 AC와 1:1
+scripts/                    seed_db.py(CSV→Postgres) · check_zdr.py · 멀티모달 평가셋 생성·채점 스크립트
 
 docs/
 ├── MESTORY_PRD.md            제품 요구사항 문서
 ├── MESTORY_기능목록.md       기능 목록 (P0/P1, 범위 밖)
+├── MESTORY_문제정의서.docx   문제 정의서
+├── MESTORY_팀착수체크리스트.docx / MESTORY_평가질문_계획보완10_신규20.xlsx   착수·평가 보조 자료
 ├── SCAFFOLD.md               초기 스캐폴딩 안내
+├── *.csv                     시뮬레이션 데이터 (downtime_log · equipment_master · error_code_dict · maintenance_history)
+├── images/                   MCP Inspector 캡처
 └── specs/                    기능별 Spec 문서 (`_example.md` 형식)
 
-docker-compose.yml / Dockerfile   `docker compose up` 한 줄로 api+db 실행
+docker-compose.yml / Dockerfile   api+db 실행 (알려진 문제는 AGENTS.md 참고)
 AGENTS.md / CLAUDE.md       AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
 ```
 

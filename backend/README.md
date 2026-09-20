@@ -11,7 +11,7 @@
   - [x] `create_tool_calling_agent` + `AgentExecutor`로 MCP 도구 호출형 에이전트 구성 (LangGraph 미사용)
   - [x] `load_mcp_tools`로 `mcp_server`에 붙어 도구를 동적으로 불러옴 (도구 이름 하드코딩 없음)
   - [x] 출력 계약 검증 (Pydantic) — 에이전트 응답을 JSON으로 파싱 후 스키마 검증
-  - [x] 3단계 재시도/폴백 (① 프롬프트 재시도 → ② 축소 스키마 재시도 → ③ 고정 안전 응답), Docker로 폴백 동작 + **실제 API 키로 end-to-end 성공까지 확인함 (아래 5번 참고)**
+  - [x] 3단계 재시도/폴백 (① 프롬프트 재시도 → ② 축소 스키마 재시도 → ③ 모두 실패하면 분석 예외 → `POST /report`는 HTTP 503. 초기에는 고정 안전 응답이었으나 실패를 정상 응답으로 위장하지 않도록 바꿨다), Docker로 폴백 동작 + **실제 API 키로 end-to-end 성공까지 확인함 (아래 5번 참고)**
   - [x] Langfuse 트레이스 연동 (`langfuse.langchain.CallbackHandler`, 키 없으면 자동으로 콜백 생략) — **실제 트레이스 도착까지 확인함 (아래 6번 참고)**
   - [x] `skills/SKILL.md` 전체를 시스템 프롬프트에 그대로 주입 (RAG 아님)
   - [x] 세션별 대화 기록 — `backend/db.py`(Postgres, `reports`/`chat_messages` 테이블)에 저장 (F-07, `session_id` 줄 때만 사용). 서버 재시작·재배포에도 남는다.
