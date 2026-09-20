@@ -704,6 +704,14 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     window_start = day_end - timedelta(days=7)
     recent_start = day_end - timedelta(days=1)
 
+    # 알림도 설비현황과 같은 "현재 상태"를 기준으로 보여 준다. 상태 계산을 여기서
+    # 다시 구현하면 7일 가동률·정지 판정의 기준이 다시 어긋날 수 있으므로, 설비현황의
+    # 파생 결과를 그대로 사용한다.
+    equipment_status_by_id = {
+        item["equipment_id"]: item["status"]
+        for item in await list_equipment_status(as_of)
+    }
+
     try:
         async with await _connect() as conn:
             downtime_cur = await conn.execute(
@@ -751,13 +759,24 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
         # (진행 중인 정지는 분석 후에도 아직 끝나지 않았으므로 계속 보여 준다.)
         if not is_open and _already_analyzed(line_id, equipment_id, start_time.date(), analyzed_scopes):
             continue
+        equipment_status = equipment_status_by_id.get(equipment_id)
+        # 복구돼 정상인 설비의 과거 이벤트는 현재 알림 목록에서 제외한다. 마스터에
+        # 없는 설비는 설비현황과 비교할 수 없으므로 기존 이벤트 표기를 유지한다.
+        if equipment_status == "정상":
+            continue
+        if equipment_status is None:
+            tone = "critical" if is_open else "warning"
+            tag = "긴급" if is_open else "주의"
+        else:
+            tone = "critical" if equipment_status == "정지" else "warning"
+            tag = "긴급" if equipment_status == "정지" else "주의"
         # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
         # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
         cause_note = f"{error_description or error_code} 관련 " if error_code else ""
         alerts.append({
             "id": f"downtime-{log_id}",
-            "tone": "critical" if is_open else "warning",
-            "tag": "긴급" if is_open else "주의",
+            "tone": tone,
+            "tag": tag,
             "title": f"{_scope_name(line_id, equipment_id, equipment_type)} 정지 감지",
             "description": f"{cause_note}다운타임이 {'진행 중입니다' if is_open else '있었습니다'}. 원인 분석이 필요합니다.",
             "line_id": line_id,
