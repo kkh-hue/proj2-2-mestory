@@ -137,6 +137,7 @@ async def save_report(report_id: str, report: Any, session_id: str | None) -> No
             )
     except Exception as exc:
         logger.warning("리포트 저장 실패 (report_id=%s): %s", report_id, exc)
+        raise DatabaseUnavailableError("데이터베이스에 리포트를 저장하지 못했습니다") from exc
 
 
 async def get_session_scope(session_id: str) -> tuple[str | None, str | None] | None:
@@ -183,6 +184,7 @@ async def save_message(
             )
     except Exception as exc:
         logger.warning("대화 메시지 저장 실패 (session_id=%s): %s", session_id, exc)
+        raise DatabaseUnavailableError("데이터베이스에 대화 메시지를 저장하지 못했습니다") from exc
 
 
 async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessage]:

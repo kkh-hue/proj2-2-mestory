@@ -126,6 +126,19 @@ def test_report_analysis_infrastructure_failure_returns_503_without_report_id(ap
     assert "x-report-id" not in response.headers
 
 
+@pytest.mark.parametrize("failure", ["report", "message"])
+def test_report_storage_failure_returns_503_without_report_id(api, failure):
+    module, generator = api()
+    generator.side_effect = module.DatabaseUnavailableError(f"{failure} storage failed")
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": f"{failure} storage failed"}
+    assert "x-report-id" not in response.headers
+
+
 def test_report_db_failure_returns_503(api, monkeypatch):
     module, generator = api()
     monkeypatch.setattr(
