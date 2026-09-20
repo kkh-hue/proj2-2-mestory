@@ -3,7 +3,9 @@
 // 다운타임 분석 — 조건(기간·라인·설비·상태)에 맞는 정지를 원인(에러코드)별로 집계해 보여 준다.
 // 데이터는 GET /downtime/analysis (docs/specs/downtime-analysis.md). LLM 원인 분석은 "분석 실행"(/downtime/report).
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import CauseInfoModal from "../../components/CauseInfoModal";
 import DateField from "../../components/DateField";
 import FilterCard from "../../components/FilterCard";
 import Topbar from "../../components/Topbar";
@@ -23,7 +25,9 @@ import {
   IconTriangleWarning,
 } from "../../components/icons";
 import { getDowntimeAnalysis, listEquipment } from "../../lib/api";
-import type { AnalysisStatus, DowntimeAnalysis } from "../../types/downtimeAnalysis";
+import { todayKst } from "../../lib/date";
+import { equipmentLabel, lineLabel } from "../../lib/labels";
+import type { AnalysisCause, AnalysisStatus, DowntimeAnalysis } from "../../types/downtimeAnalysis";
 import type { EquipmentSummaryItem } from "../../types/equipment";
 
 const CATEGORY_ICON: Record<string, typeof IconBolt> = {
@@ -40,15 +44,12 @@ const STATUS_OPTIONS: { value: AnalysisStatus; label: string }[] = [
   { value: "open", label: "진행 중" },
 ];
 
-function toISO(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
-
+// 기본 기간은 KST 기준 오늘부터 6일 전까지 (UTC 기준이면 자정~09시에 하루 어긋난다).
 function defaultRange() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 6);
-  return { from: toISO(start), to: toISO(end) };
+  const to = todayKst();
+  const [y, m, d] = to.split("-").map(Number);
+  const start = new Date(Date.UTC(y, m - 1, d - 6));
+  return { from: start.toISOString().slice(0, 10), to };
 }
 
 function formatMinutes(min: number) {
@@ -68,17 +69,29 @@ function toneFor(index: number) {
 }
 
 export default function DowntimeAnalysisPage() {
+  // useSearchParams는 Suspense 경계가 없으면 프로덕션 빌드가 실패한다.
+  return (
+    <Suspense fallback={null}>
+      <DowntimeAnalysisView />
+    </Suspense>
+  );
+}
+
+function DowntimeAnalysisView() {
+  const params = useSearchParams();
   const initial = useMemo(defaultRange, []);
   const [dateFrom, setDateFrom] = useState(initial.from);
   const [dateTo, setDateTo] = useState(initial.to);
-  const [lineId, setLineId] = useState("");
-  const [equipmentId, setEquipmentId] = useState("");
+  // 설비 관리 카드에서 넘어온 경우 그 설비로 미리 걸러 둔다.
+  const [lineId, setLineId] = useState(params.get("line_id") ?? "");
+  const [equipmentId, setEquipmentId] = useState(params.get("equipment_id") ?? "");
   const [status, setStatus] = useState<AnalysisStatus>("all");
 
   const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
   const [data, setData] = useState<DowntimeAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedCause, setSelectedCause] = useState<AnalysisCause | null>(null);
 
   const rangeInvalid = dateFrom > dateTo;
 
@@ -110,9 +123,15 @@ export default function DowntimeAnalysisPage() {
 
   const lines = useMemo(() => Array.from(new Set(equipment.map((e) => e.line_id))).sort(), [equipment]);
   const equipmentOptions = useMemo(
-    () => equipment.filter((e) => !lineId || e.line_id === lineId).map((e) => e.equipment_id).sort(),
+    () => equipment.filter((e) => !lineId || e.line_id === lineId).sort((a, b) => a.equipment_id.localeCompare(b.equipment_id)),
     [equipment, lineId],
   );
+
+  // "분석 실행"(LLM 리포트)으로 지금 걸어 둔 조건을 그대로 넘긴다.
+  const reportParams = new URLSearchParams({ date_from: dateFrom, date_to: dateTo });
+  if (lineId) reportParams.set("line_id", lineId);
+  if (equipmentId) reportParams.set("equipment_id", equipmentId);
+  const reportHref = `/downtime/report?${reportParams.toString()}`;
 
   function changeLine(next: string) {
     setLineId(next);
@@ -130,7 +149,7 @@ export default function DowntimeAnalysisPage() {
         title="다운타임 분석"
         subtitle="설비별 다운타임 원인과 발생 현황을 분석하여 가동률 향상에 활용하세요."
         action={
-          <Link href="/downtime/report" className="new-analysis-button">
+          <Link href={reportHref} className="new-analysis-button">
             <IconPlus />
             분석 실행
           </Link>
@@ -149,15 +168,15 @@ export default function DowntimeAnalysisPage() {
           <select value={lineId} onChange={(e) => changeLine(e.target.value)} aria-label="라인">
             <option value="">전체 라인</option>
             {lines.map((line) => (
-              <option key={line} value={line}>{line}</option>
+              <option key={line} value={line}>{lineLabel(line)}</option>
             ))}
           </select>
         </FilterCard>
         <FilterCard icon={<IconEquipment />} label="설비">
           <select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)} aria-label="설비">
             <option value="">전체 설비</option>
-            {equipmentOptions.map((id) => (
-              <option key={id} value={id}>{id}</option>
+            {equipmentOptions.map((item) => (
+              <option key={item.equipment_id} value={item.equipment_id}>{equipmentLabel(item)}</option>
             ))}
           </select>
         </FilterCard>
@@ -236,10 +255,10 @@ export default function DowntimeAnalysisPage() {
                   <span className="insight-icon"><IconGauge /></span>
                   <div>
                     <span className="insight-label">최대 영향 설비</span>
-                    <div className="insight-value">{data.top_equipment?.equipment_id ?? "-"}</div>
+                    <div className="insight-value">{data.top_equipment ? equipmentLabel(data.top_equipment) : "-"}</div>
                     <p className="insight-note">
                       {data.top_equipment
-                        ? `${data.top_equipment.equipment_type ?? "설비"} · ${formatMinutes(data.top_equipment.downtime_min)}로 가장 많은 다운타임이 발생했습니다.`
+                        ? `${data.top_equipment.equipment_id} · ${formatMinutes(data.top_equipment.downtime_min)}로 가장 많은 다운타임이 발생했습니다.`
                         : "조건에 맞는 다운타임이 없습니다."}
                     </p>
                   </div>
@@ -276,7 +295,19 @@ export default function DowntimeAnalysisPage() {
                   {data.causes.map((row, index) => {
                     const Icon = CATEGORY_ICON[row.category] ?? IconDots;
                     return (
-                      <tr key={row.error_code}>
+                      <tr
+                        key={row.error_code}
+                        className="events-row-clickable"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedCause(row)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedCause(row);
+                          }
+                        }}
+                      >
                         <td className="detail-cause-cell">
                           <span className={`breakdown-icon breakdown-icon-sm ${toneFor(index)}`} aria-hidden="true">
                             <Icon />
@@ -305,6 +336,7 @@ export default function DowntimeAnalysisPage() {
           </section>
         </>
       )}
+      {selectedCause && <CauseInfoModal cause={selectedCause} onClose={() => setSelectedCause(null)} />}
     </main>
   );
 }

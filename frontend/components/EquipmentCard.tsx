@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { lineLabel } from "../lib/labels";
 import {
   IconChevronRight, IconCheck, IconConveyor, IconEquipment, IconEye, IconFan,
   IconPanel, IconPump, IconRobotArm, IconStamp, IconStopCircle, IconTriangleWarning,
@@ -31,7 +33,11 @@ export default function EquipmentCard({ item }: { item: EquipmentSummaryItem }) 
   const { className, Icon: StatusIcon } = STATUS_TONE[item.status];
 
   return (
-    <article className={`equipment-card ${className}`}>
+    <Link
+      href={`/downtime?line_id=${encodeURIComponent(item.line_id)}&equipment_id=${encodeURIComponent(item.equipment_id)}`}
+      className={`equipment-card ${className}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <div className="equipment-card-top">
         <span className="equipment-icon">
           <Icon />
@@ -44,7 +50,7 @@ export default function EquipmentCard({ item }: { item: EquipmentSummaryItem }) 
       </div>
       <h4 className="equipment-name">{item.equipment_type}</h4>
       <span className="equipment-line">
-        <span className="equipment-line-dot" /> {item.line_id}
+        <span className="equipment-line-dot" /> {lineLabel(item.line_id)}
       </span>
       <div className="equipment-stats">
         <div>
@@ -59,6 +65,6 @@ export default function EquipmentCard({ item }: { item: EquipmentSummaryItem }) 
       <span className="breakdown-meter-track">
         <span className="breakdown-meter-fill" style={{ width: `${item.utilization_pct}%` }} />
       </span>
-    </article>
+    </Link>
   );
 }

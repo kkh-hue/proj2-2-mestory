@@ -11,7 +11,7 @@ const NAV_ITEMS = [
   { href: "/", label: "대시보드", Icon: IconDashboard },
   { href: "/downtime", label: "다운타임 분석", Icon: IconChart },
   { href: "/reports", label: "리포트", Icon: IconReport },
-  { href: "/equipment", label: "설비 관리", Icon: IconEquipment },
+  { href: "/equipment", label: "설비 현황", Icon: IconEquipment },
   { href: "/downtime/ai", label: "AI 원인분석", Icon: IconRobot },
   { href: "/alerts", label: "알림", Icon: IconBell },
 ] as const;

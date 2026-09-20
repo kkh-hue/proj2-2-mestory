@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { IconCalendar, IconPlus } from "./icons";
 
@@ -21,16 +21,30 @@ function isCompleteDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number(value.slice(0, 4)) >= 2000 && Number(value.slice(0, 4)) <= 2100;
 }
 
+function openPicker(input: HTMLInputElement | null) {
+  if (!input) return;
+  try {
+    input.showPicker();
+  } catch {
+    input.focus(); // showPicker를 지원하지 않는 브라우저
+  }
+}
+
 // 입력 중인 값(draft)은 여기서만 들고 있고, 완성된 날짜일 때만 부모에 알린다.
 // 부모 값을 바로 value로 물리면 타이핑 도중 입력창이 원래 날짜로 되돌려진다.
 function DatePill({ date, onDateChange }: { date: string; onDateChange: (value: string) => void }) {
   const [draft, setDraft] = useState(date);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => setDraft(date), [date]);
 
   return (
     <label className="date-pill date-pill-input" title="이 날짜 기준으로 데이터를 다시 조회합니다">
-      <IconCalendar />
+      {/* 아이콘을 눌러도 달력이 열리게 한다 (input 안쪽 기본 아이콘만 눌리던 문제) */}
+      <button type="button" className="date-icon-button" aria-label="달력 열기" onClick={() => openPicker(inputRef.current)}>
+        <IconCalendar />
+      </button>
       <input
+        ref={inputRef}
         type="date"
         value={draft}
         onChange={(e) => {

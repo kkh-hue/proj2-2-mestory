@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { IconCalendar } from "./icons";
 
 // 직접 타이핑하는 중에는 연도가 덜 입력된 값("31526-03-15" 등)이 onChange로 넘어온다.
 // 4자리 연도(2000~2100)가 완성된 날짜만 부모에 알리고, 입력 중 값은 draft로 들고 있어
@@ -20,17 +21,35 @@ export default function DateField({
   label: string;
 }) {
   const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => setDraft(value), [value]);
 
   return (
-    <input
-      type="date"
-      value={draft}
-      aria-label={label}
-      onChange={(e) => {
-        setDraft(e.target.value);
-        if (isCompleteDate(e.target.value)) onCommit(e.target.value);
-      }}
-    />
+    <span className="date-field">
+      <button
+        type="button"
+        className="date-icon-button"
+        aria-label={`${label} 달력 열기`}
+        onClick={() => {
+          try {
+            inputRef.current?.showPicker();
+          } catch {
+            inputRef.current?.focus();
+          }
+        }}
+      >
+        <IconCalendar />
+      </button>
+      <input
+        ref={inputRef}
+        type="date"
+        value={draft}
+        aria-label={label}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          if (isCompleteDate(e.target.value)) onCommit(e.target.value);
+        }}
+      />
+    </span>
   );
 }

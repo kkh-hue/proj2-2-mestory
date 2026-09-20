@@ -10,51 +10,20 @@ import CauseDetailTable from "../../../components/CauseDetailTable";
 import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
 import { IconDownload, IconReport } from "../../../components/icons";
-import { getReport } from "../../../lib/api";
+import { getReport, listEquipment } from "../../../lib/api";
+import { reportScope, reportTitle } from "../../../lib/labels";
+import type { EquipmentSummaryItem } from "../../../types/equipment";
+import { downloadCsv } from "../../../lib/reportCsv";
 import type { SavedReport } from "../../../types/report";
-
-function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-function toCsv(report: SavedReport): string {
-  const rows = [
-    ["항목", "값"],
-    ["리포트 ID", report.id],
-    ["생성 시각", report.created_at],
-    ["기간", report.period],
-    ["라인", report.line_id],
-    ["설비", report.equipment_id],
-    ["확인 필요 건수", String(report.unclassified_count)],
-    ["권장 조치", report.recommended_action],
-    ["분석 참고 사항", report.confidence_note],
-    [],
-    ["에러코드", "설명", "심각도", "확정 여부", "판단 근거"],
-    ...report.causes.map((cause) => [
-      cause.error_code, cause.description, cause.severity,
-      cause.is_confirmed ? "확정" : "확인 필요", cause.evidence,
-    ]),
-  ];
-  return rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
-}
-
-function downloadCsv(report: SavedReport) {
-  // BOM(﻿)을 앞에 붙여야 엑셀이 한글을 깨진 글자 없이 연다.
-  const blob = new Blob([`﻿${toCsv(report)}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `mestory-report-${report.id}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
-}
 
 export default function ReportDetailPage({ params }: { params: { id: string } }) {
   const [report, setReport] = useState<SavedReport | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
 
   useEffect(() => {
+    listEquipment().then(setEquipment).catch(() => {});
     getReport(params.id)
       .then(setReport)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
@@ -64,8 +33,8 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
   return (
     <main className="page">
       <Topbar
-        title="리포트 상세"
-        subtitle={report ? `${report.line_id} · ${report.equipment_id} · ${report.period}` : "불러오는 중..."}
+        title={report ? reportTitle(report, equipment) : "리포트 상세"}
+        subtitle={report ? `${reportScope(report, equipment)} · ${report.period}` : "불러오는 중..."}
         action={
           report ? (
             <>

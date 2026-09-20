@@ -4,7 +4,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { listEquipment } from "../lib/api";
 import { todayKst } from "../lib/date";
+import { equipmentLabel, lineLabel } from "../lib/labels";
 import type { EquipmentSummaryItem } from "../types/equipment";
+import DateField from "./DateField";
 import { IconCalendar, IconEquipment, IconFolder, IconPlus, IconX } from "./icons";
 
 export default function NewAnalysisModal() {
@@ -39,11 +41,17 @@ export default function NewAnalysisModal() {
 
   const lines = useMemo(() => [...new Set(equipment.map((e) => e.line_id))].sort(), [equipment]);
   const equipmentOptions = useMemo(
-    () => equipment.filter((e) => !lineId || e.line_id === lineId).map((e) => e.equipment_id).sort(),
+    () => equipment.filter((e) => !lineId || e.line_id === lineId).sort((a, b) => a.equipment_id.localeCompare(b.equipment_id)),
     [equipment, lineId],
   );
 
+  const selectedEquipment = equipment.find((e) => e.equipment_id === equipmentId);
+
   function goToRealAnalysis() {
+    if (!lineId) {
+      setValidationError("분석할 라인을 선택해 주세요.");
+      return;
+    }
     if (dateFrom && dateTo && dateFrom > dateTo) {
       setValidationError("시작일은 종료일보다 늦을 수 없습니다.");
       return;
@@ -85,11 +93,11 @@ export default function NewAnalysisModal() {
                   <div className="modal-date-fields">
                     <label>
                       시작일
-                      <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                      <DateField value={dateFrom} onCommit={setDateFrom} label="시작일" />
                     </label>
                     <label>
                       종료일
-                      <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                      <DateField value={dateTo} onCommit={setDateTo} label="종료일" />
                     </label>
                   </div>
                 </div>
@@ -105,10 +113,10 @@ export default function NewAnalysisModal() {
                       setEquipmentId("");
                     }}
                   >
-                    <option value="">전체 라인</option>
+                    <option value="" disabled>라인 선택</option>
                     {lines.map((id) => (
                       <option key={id} value={id}>
-                        {id}
+                        {lineLabel(id)}
                       </option>
                     ))}
                   </select>
@@ -118,11 +126,18 @@ export default function NewAnalysisModal() {
                   <span className="modal-field-label">
                     <IconEquipment /> 설비 선택
                   </span>
-                  <select value={equipmentId} onChange={(e) => setEquipmentId(e.target.value)}>
-                    <option value="">전체 설비</option>
-                    {equipmentOptions.map((id) => (
-                      <option key={id} value={id}>
-                        {id}
+                  <select
+                    value={equipmentId}
+                    onChange={(e) => {
+                      setEquipmentId(e.target.value);
+                      const found = equipment.find((item) => item.equipment_id === e.target.value);
+                      if (found) setLineId(found.line_id); // 설비를 고르면 그 설비의 라인이 따라온다
+                    }}
+                  >
+                    <option value="">선택한 라인의 전체 설비</option>
+                    {equipmentOptions.map((item) => (
+                      <option key={item.equipment_id} value={item.equipment_id}>
+                        {equipmentLabel(item)}
                       </option>
                     ))}
                   </select>
@@ -136,7 +151,7 @@ export default function NewAnalysisModal() {
                   <div className="modal-info-value">{dateFrom === dateTo ? dateFrom : `${dateFrom} ~ ${dateTo}`}</div>
                 </div>
                 <p className="modal-info-note">
-                  {lineId || "전체 라인"} · {equipmentId || "전체 설비"}
+                  {lineId ? lineLabel(lineId) : "라인 미선택"} · {selectedEquipment ? equipmentLabel(selectedEquipment) : "라인의 전체 설비"}
                   <br />
                   "분석 시작"을 누르면 이 조건으로 분석을 실행합니다.
                 </p>

@@ -132,6 +132,30 @@ async def save_report(report_id: str, report: Any, session_id: str | None) -> No
         logger.warning("리포트 저장 실패 (report_id=%s): %s", report_id, exc)
 
 
+async def get_session_scope(session_id: str) -> tuple[str | None, str | None] | None:
+    """그 세션에서 마지막으로 확정된 (line_id, equipment_id). 후속 질문이 같은 설비를 이어 가게 한다.
+
+    "전체 라인"/"전체 설비"로 저장된 옛 리포트는 범위가 아니므로 건너뛴다.
+    """
+    try:
+        async with await _connect() as conn:
+            cur = await conn.execute(
+                "select line_id, equipment_id from reports "
+                "where session_id = %s and (equipment_id like 'EQ-%%' or line_id like 'LINE-%%') "
+                "order by created_at desc limit 1",
+                (session_id,),
+            )
+            row = await cur.fetchone()
+    except Exception as exc:
+        logger.warning("세션 범위 조회 실패 (session_id=%s): %s", session_id, exc)
+        return None
+    if row is None:
+        return None
+    line_id = row[0] if row[0] and row[0].startswith("LINE-") else None
+    equipment_id = row[1] if row[1] and row[1].startswith("EQ-") else None
+    return line_id, equipment_id
+
+
 async def save_message(
     session_id: str,
     role: str,
@@ -572,11 +596,13 @@ async def get_downtime_analysis(
             select coalesce(d.error_code, '미상'), ec.description, ec.category,
                    count(*) filter (where not {_INVALID_DOWNTIME}),
                    coalesce(sum(d.downtime_min) filter (where d.downtime_min > 0), 0),
-                   max(d.start_time) filter (where not {_INVALID_DOWNTIME})
+                   max(d.start_time) filter (where not {_INVALID_DOWNTIME}),
+                   ec.typical_cause, ec.typical_duration_min_range, ec.severity_hint
             from downtime_log d
             left join error_code_dict ec on ec.error_code = d.error_code
             where {where}
-            group by coalesce(d.error_code, '미상'), ec.description, ec.category
+            group by coalesce(d.error_code, '미상'), ec.description, ec.category,
+                     ec.typical_cause, ec.typical_duration_min_range, ec.severity_hint
             having count(*) filter (where not {_INVALID_DOWNTIME}) > 0
             """,
             params,
@@ -620,6 +646,51 @@ async def get_downtime_analysis(
 # 같은 계정 기반 기능은 없어서 지어내지 않고, "24시간 이내 발생"을 미확인의
 # 대리 지표로 쓴다.
 # ─────────────────────────────────────────────
+def _line_name(line_id: str | None) -> str:
+    """LINE-A → A라인. 라인 코드가 아니면 그대로 (사전에 없는 값을 지어내지 않는다)."""
+    match = re.match(r"^LINE-(.+)$", line_id or "", re.IGNORECASE)
+    return f"{match.group(1)}라인" if match else (line_id or "")
+
+
+def _scope_name(line_id: str | None, equipment_id: str | None, equipment_type: str | None) -> str:
+    """알림에 쓰는 사람이 읽는 범위 표기: "E라인 · 컨베이어 · EQ-057" / "B라인 전체 설비"."""
+    if equipment_id and equipment_id.startswith("EQ-"):
+        parts = [_line_name(line_id), equipment_type, equipment_id]
+        return " · ".join(p for p in parts if p)
+    if line_id and line_id.startswith("LINE-"):
+        return f"{_line_name(line_id)} 전체 설비"
+    return "전체 설비"
+
+
+def _period_covers(period: str | None, day: date) -> bool:
+    """리포트 period("2026-09-14 ~ 2026-09-20", "전체 ~ 전체")가 그 날을 포함하는지."""
+    if not period or "~" not in period:
+        return True
+    start_text, end_text = (p.strip() for p in period.split("~", 1))
+    try:
+        if start_text != "전체" and day < date.fromisoformat(start_text):
+            return False
+        if end_text != "전체" and day > date.fromisoformat(end_text):
+            return False
+    except ValueError:
+        return True
+    return True
+
+
+def _already_analyzed(line_id: str | None, equipment_id: str | None, day: date,
+                      scopes: list[tuple[str | None, str | None, str | None]]) -> bool:
+    """이 정지 기록을 이미 다룬 리포트(같은 설비, 또는 그 라인 전체를 본 리포트)가 있는가."""
+    for r_line, r_equipment, r_period in scopes:
+        if not _period_covers(r_period, day):
+            continue
+        if r_equipment and r_equipment.startswith("EQ-"):
+            if r_equipment == equipment_id:
+                return True
+        elif r_line and r_line.startswith("LINE-") and r_line == line_id:
+            return True
+    return False
+
+
 async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     """as_of를 안 주면 오늘 기준(기존과 동일). 주면 그 날짜를 "지금"으로 보고 다시 계산한다.
 
@@ -654,13 +725,21 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
 
             report_cur = await conn.execute(
                 """
-                select id, equipment_id, line_id, recommended_action, created_at,
-                       (created_at >= %s) as is_recent
-                from reports where created_at < %s order by created_at desc limit %s
+                select r.id, r.equipment_id, r.line_id, r.recommended_action, r.created_at,
+                       (r.created_at >= %s) as is_recent, e.equipment_type, e.line_id
+                from reports r left join equipment_master e on e.equipment_id = r.equipment_id
+                where r.created_at < %s order by r.created_at desc limit %s
                 """,
                 (_kst_midnight(recent_start), _kst_midnight(day_end), limit),
             )
             report_rows = await report_cur.fetchall()
+
+            # 이미 리포트로 분석된 정지의 원본 "정지 감지" 알림을 가리기 위한 범위 목록
+            scope_cur = await conn.execute(
+                "select line_id, equipment_id, period from reports where created_at < %s",
+                (_kst_midnight(day_end),),
+            )
+            analyzed_scopes = await scope_cur.fetchall()
     except Exception as exc:
         logger.warning("알림 목록 조회 실패: %s", exc)
         return []
@@ -668,6 +747,10 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     alerts: list[dict] = []
     for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
          equipment_type, error_description) in downtime_rows:
+        # 분석이 끝난 설비의 원본 정지 알림은 숨긴다 — "분석 완료" 알림이 그 자리를 대신한다.
+        # (진행 중인 정지는 분석 후에도 아직 끝나지 않았으므로 계속 보여 준다.)
+        if not is_open and _already_analyzed(line_id, equipment_id, start_time.date(), analyzed_scopes):
+            continue
         # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
         # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
         cause_note = f"{error_description or error_code} 관련 " if error_code else ""
@@ -675,20 +758,26 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
             "id": f"downtime-{log_id}",
             "tone": "critical" if is_open else "warning",
             "tag": "긴급" if is_open else "주의",
-            "title": f"{equipment_id} {equipment_type or ''} 정지 감지".strip(),
+            "title": f"{_scope_name(line_id, equipment_id, equipment_type)} 정지 감지",
             "description": f"{cause_note}다운타임이 {'진행 중입니다' if is_open else '있었습니다'}. 원인 분석이 필요합니다.",
             "line_id": line_id,
+            "equipment_id": equipment_id,
             "date": start_time,
             "unread": bool(is_recent),
         })
-    for report_id, equipment_id, line_id, recommended_action, created_at, is_recent in report_rows:
+    for report_id, equipment_id, line_id, recommended_action, created_at, is_recent, equipment_type, master_line in report_rows:
+        # 화면으로 넘어갈 때 쓰는 값은 코드(LINE-E, EQ-057), 보이는 문장은 이름으로 만든다.
+        scope_equipment = equipment_id if equipment_id and equipment_id.startswith("EQ-") else None
+        scope_line = master_line or (line_id if line_id and line_id.startswith("LINE-") else None)
+        scope_name = _scope_name(scope_line, scope_equipment, equipment_type)
         alerts.append({
             "id": f"report-{report_id}",
             "tone": "analysis",
             "tag": "분석 완료",
             "title": "AI 원인 분석 완료",
-            "description": f"{equipment_id}의 분석이 완료되었습니다. {recommended_action or ''}".strip(),
-            "line_id": line_id,
+            "description": f"{scope_name} 분석이 완료되었습니다. {recommended_action or ''}".strip(),
+            "line_id": scope_line,
+            "equipment_id": scope_equipment,
             "date": created_at,
             "unread": bool(is_recent),
         })

@@ -3,22 +3,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import AlertBoard, { matchesTab, type TabKey } from "../../components/AlertBoard";
+import AlertBoard, { type TabKey } from "../../components/AlertBoard";
 import Topbar from "../../components/Topbar";
-import { IconBell, IconCalendar, IconChevronRight } from "../../components/icons";
 import { listAlerts } from "../../lib/api";
+import { todayKst } from "../../lib/date";
 import type { AlertItem } from "../../types/alert";
-
-function todayISO() {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [asOf, setAsOf] = useState(todayISO());
+  const [asOf, setAsOf] = useState(todayKst());
   const [activeTab, setActiveTab] = useState<TabKey>("all");
 
   useEffect(() => {
@@ -33,9 +28,6 @@ export default function AlertsPage() {
       cancelled = true;
     };
   }, [asOf]);
-
-  const unreadCount = alerts.filter((a) => matchesTab(a, "unread", asOf)).length;
-  const todayCount = alerts.filter((a) => matchesTab(a, "today", asOf)).length;
 
   return (
     <main className="page">
@@ -59,46 +51,7 @@ export default function AlertsPage() {
       )}
 
       {!loading && !error && (
-        <>
-          <section className="alert-summary-row">
-            <button
-              type="button"
-              className="alert-summary-card alert-summary-critical events-row-clickable"
-              onClick={() => setActiveTab("unread")}
-            >
-              <span className="alert-summary-icon">
-                <IconBell />
-              </span>
-              <div>
-                <span className="alert-summary-label">미확인</span>
-                <div className="alert-summary-value">
-                  {unreadCount}
-                  <span className="alert-summary-unit">건</span>
-                </div>
-              </div>
-              <IconChevronRight className="alert-summary-chevron" />
-            </button>
-            <button
-              type="button"
-              className="alert-summary-card alert-summary-accent events-row-clickable"
-              onClick={() => setActiveTab("today")}
-            >
-              <span className="alert-summary-icon">
-                <IconCalendar />
-              </span>
-              <div>
-                <span className="alert-summary-label">오늘 알림</span>
-                <div className="alert-summary-value">
-                  {todayCount}
-                  <span className="alert-summary-unit">건</span>
-                </div>
-              </div>
-              <IconChevronRight className="alert-summary-chevron" />
-            </button>
-          </section>
-
-          <AlertBoard items={alerts} asOf={asOf} active={activeTab} onActiveChange={setActiveTab} />
-        </>
+        <AlertBoard items={alerts} asOf={asOf} active={activeTab} onActiveChange={setActiveTab} />
       )}
     </main>
   );

@@ -9,6 +9,7 @@ export interface AlertItem {
   title: string;
   description: string;
   line_id: string | null;
+  equipment_id: string | null; // 분석 완료 알림 중 라인 단위 분석은 null
   date: string;
   unread: boolean;
 }

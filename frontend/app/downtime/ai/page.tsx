@@ -14,7 +14,8 @@ import {
   IconChevronRight, IconPlus, IconReport, IconRobot, IconSend, IconStopCircle,
   IconTriangleWarning, IconUser,
 } from "../../../components/icons";
-import { createReportWithId, getChatHistory, listChatSessions, listEquipment } from "../../../lib/api";
+import { ReportApiError, createReportWithId, getChatHistory, listChatSessions, listEquipment } from "../../../lib/api";
+import { reportScope } from "../../../lib/labels";
 import type { ChatSessionSummary, ChatTurn, DowntimeReport, SavedReport } from "../../../types/report";
 import type { EquipmentSummaryItem } from "../../../types/equipment";
 
@@ -82,6 +83,7 @@ export default function AiAnalysisChatPage() {
   const [error, setError] = useState("");
   const [hydrating, setHydrating] = useState(true);
   const [reviewNeeded, setReviewNeeded] = useState<EquipmentSummaryItem[]>([]);
+  const [allEquipment, setAllEquipment] = useState<EquipmentSummaryItem[]>([]);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 지금 화면에 보이는 세션. 응답이 늦게 도착했을 때 "그 사이 다른 대화로 옮겼는지" 판단하는 기준이다.
@@ -122,7 +124,10 @@ export default function AiAnalysisChatPage() {
   // 설비만 추려 버튼으로 먼저 보여준다 — 설비관리 화면과 같은 status 값을 그대로 쓴다.
   useEffect(() => {
     listEquipment()
-      .then((items) => setReviewNeeded(items.filter((item) => item.status !== "정상")))
+      .then((items) => {
+        setAllEquipment(items);
+        setReviewNeeded(items.filter((item) => item.status !== "정상"));
+      })
       .catch(() => setReviewNeeded([]));
   }, []);
 
@@ -160,7 +165,11 @@ export default function AiAnalysisChatPage() {
       ]);
     } catch (cause) {
       if (activeSessionRef.current === askedSession) {
-        setError(cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다.");
+        // 422는 "설비·라인을 알려 달라" 같은 안내 문장이 detail에 들어 있다 — 그대로 보여 준다.
+        const detail = cause instanceof ReportApiError && cause.status === 422 && typeof (cause.body as { detail?: unknown })?.detail === "string"
+          ? (cause.body as { detail: string }).detail
+          : null;
+        setError(detail ?? (cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다."));
       }
     } finally {
       setLoading(false);
@@ -262,7 +271,7 @@ export default function AiAnalysisChatPage() {
                           </div>
                           <div className="ai-answer-row">
                             <dt>라인 · 설비</dt>
-                            <dd>{turn.report.line_id} · {turn.report.equipment_id}</dd>
+                            <dd>{reportScope(turn.report, allEquipment)}</dd>
                           </div>
                           <div className="ai-answer-row">
                             <dt>분석 참고 사항</dt>

@@ -4,22 +4,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import NewAnalysisModal from "../../components/NewAnalysisModal";
 import EquipmentBoard from "../../components/EquipmentBoard";
 import Topbar from "../../components/Topbar";
-import { IconCheck, IconPlus, IconReport, IconStopCircle, IconTriangleWarning } from "../../components/icons";
+import { IconCheck, IconReport, IconStopCircle, IconTriangleWarning } from "../../components/icons";
 import { listEquipment } from "../../lib/api";
+import { todayKst } from "../../lib/date";
 import type { EquipmentSummaryItem } from "../../types/equipment";
-
-function todayISO() {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-}
 
 export default function EquipmentPage() {
   const [items, setItems] = useState<EquipmentSummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [asOf, setAsOf] = useState(todayISO());
+  const [asOf, setAsOf] = useState(todayKst());
 
   useEffect(() => {
     let cancelled = false;
@@ -48,16 +45,11 @@ export default function EquipmentPage() {
   return (
     <main className="page">
       <Topbar
-        title="설비 관리"
+        title="설비 현황"
         subtitle="라인과 설비 상태를 한눈에 확인하세요."
         date={asOf}
         onDateChange={setAsOf}
-        action={
-          <button type="button" className="new-analysis-button">
-            <IconPlus />
-            설비 등록
-          </button>
-        }
+        action={<NewAnalysisModal />}
       />
 
       {loading && (

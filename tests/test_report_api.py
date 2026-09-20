@@ -82,9 +82,6 @@ def test_disallowed_method(api):
 @pytest.mark.parametrize("payload", [
     {"line_id": "LINE-A", "equipment_id": "EQ-004", "date_from": "2026-01-03",
      "date_to": "2026-01-03", "session_id": "session-1"},
-    {},
-    {"line_id": None, "equipment_id": None, "date_from": None,
-     "date_to": None, "session_id": None},
 ])
 def test_report_contract(api, payload):
     module, generator = api()
@@ -123,4 +120,38 @@ def test_invalid_request_keeps_422(api):
         response = client.post("/report", json={"line_id": []})
     assert response.status_code == 422
     assert response.json()["detail"][0]["loc"] == ["body", "line_id"]
+    generator.assert_not_awaited()
+
+
+def test_report_scope_ac06_질문에_범위가_없으면_422이고_생성하지_않는다(api):
+    module, generator = api()
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"message": "원인 분석해줘", "session_id": "s-1"})
+    assert response.status_code == 422
+    assert "설비" in response.json()["detail"]
+    generator.assert_not_awaited()
+
+
+def test_report_scope_ac01_질문_속_설비가_조건으로_넘어간다(api, monkeypatch):
+    module, generator = api()
+    monkeypatch.setattr(module, "_load_equipment_master", AsyncMock(return_value=({"EQ-057": "LINE-C"}, {"EQ-057": "컨베이어"})))
+    generator.side_effect = None
+    generator.return_value = module.DowntimeReport(
+        equipment_id="EQ-057", line_id="LINE-C", period="전체 ~ 전체", causes=[], unclassified_count=0,
+        confidence_note="", recommended_action="",
+    )
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"message": "EQ-057 원인 분석해줘", "session_id": "s-1"})
+    assert response.status_code == 200
+    kwargs = generator.call_args.kwargs
+    assert (kwargs["line_id"], kwargs["equipment_id"]) == ("LINE-C", "EQ-057")
+
+
+@pytest.mark.parametrize("payload", [{}, {"line_id": None, "equipment_id": None, "date_from": None, "date_to": None, "session_id": None}])
+def test_report_scope_ac10_범위가_전혀_없으면_message가_없어도_422(api, payload):
+    module, generator = api()
+    with TestClient(module.app) as client:
+        response = client.post("/report", json=payload)
+    assert response.status_code == 422
+    assert "설비" in response.json()["detail"]
     generator.assert_not_awaited()

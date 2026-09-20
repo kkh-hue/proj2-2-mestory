@@ -75,3 +75,15 @@ def test_건수와_최대영향설비():
                        ("EQ-021", "컨베이어", 25.0), 0, D1, D2)
     assert r["event_count"] == 5
     assert r["top_equipment"] == {"equipment_id": "EQ-021", "equipment_type": "컨베이어", "downtime_min": 25.0}
+
+
+@pytest.mark.no_data
+def test_원인_설명_필드는_사전_값이_있으면_담기고_없으면_None():
+    with_dict = ("E-1", "a", "전기", 2, 10.0, None, "배선 불량", "10~30", "보통")
+    without = ("E-2", "b", "기계", 1, 5.0, None)
+    r = build_analysis([with_dict, without], None, 0, D1, D2)
+    by_code = {c["error_code"]: c for c in r["causes"]}
+    assert by_code["E-1"]["typical_cause"] == "배선 불량"
+    assert by_code["E-1"]["typical_duration_range"] == "10~30"
+    assert by_code["E-1"]["severity_hint"] == "보통"
+    assert by_code["E-2"]["typical_cause"] is None

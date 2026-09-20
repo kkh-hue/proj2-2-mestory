@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { IconChevronRight, IconCpu, IconSiren, IconTriangleWarning } from "./icons";
 import type { AlertItem } from "../types/alert";
 
@@ -17,9 +16,14 @@ function formatDate(iso: string) {
 export default function AlertRow({ alert }: { alert: AlertItem }) {
   const router = useRouter();
   const Icon = TONE_ICON[alert.tone];
-  // report-* 알림은 실제 리포트 상세로, downtime-* 알림은 해당 설비 화면으로 보낸다
-  // (개별 다운타임 기록 상세 화면은 아직 없다).
-  const href = alert.id.startsWith("report-") ? `/reports/${alert.id.slice("report-".length)}` : "/equipment";
+  // "분석 완료" 알림은 그 리포트 상세로, 정지 감지 알림은 그 라인·설비로 걸러진
+  // 다운타임 분석 화면으로 보낸다 (개별 다운타임 기록 상세 화면은 아직 없다).
+  const params = new URLSearchParams();
+  if (alert.line_id) params.set("line_id", alert.line_id);
+  if (alert.equipment_id) params.set("equipment_id", alert.equipment_id);
+  const query = params.toString();
+  const analysisHref = query ? `/downtime?${query}` : "/downtime";
+  const href = alert.id.startsWith("report-") ? `/reports/${alert.id.slice("report-".length)}` : analysisHref;
 
   return (
     <article
@@ -47,9 +51,6 @@ export default function AlertRow({ alert }: { alert: AlertItem }) {
       <div className="alert-right">
         <span className="alert-date">{formatDate(alert.date)}</span>
         <span className={`alert-dot${alert.unread ? " alert-dot-unread" : ""}`} aria-hidden="true" />
-        <Link href={href} className="secondary-button" onClick={(e) => e.stopPropagation()}>
-          보기
-        </Link>
         <IconChevronRight className="events-row-chevron" />
       </div>
     </article>
