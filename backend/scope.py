@@ -28,6 +28,11 @@ def _line_from_text(text: str) -> str | None:
     return f"LINE-{match.group(1).upper()}" if match else None
 
 
+def _equipment_from_text(text: str) -> str | None:
+    match = _EQUIPMENT_RE.search(text)
+    return f"EQ-{int(match.group(1)):03d}" if match else None
+
+
 def _equipment_by_type(
     text: str,
     line_hint: str | None,
@@ -68,11 +73,16 @@ def resolve_scope(
     """
     line_id, equipment_id = _clean(line_id), _clean(equipment_id)
     text = message or ""
+    text_line_id = _line_from_text(text)
+    text_equipment_id = _equipment_from_text(text)
+
+    if line_id and text_line_id and line_id != text_line_id:
+        raise ScopeError(f"질문의 라인({text_line_id})과 요청 라인({line_id})이 일치하지 않습니다")
+    if equipment_id and text_equipment_id and equipment_id != text_equipment_id:
+        raise ScopeError(f"질문의 설비({text_equipment_id})와 요청 설비({equipment_id})가 일치하지 않습니다")
 
     if not equipment_id:
-        match = _EQUIPMENT_RE.search(text)
-        if match:
-            equipment_id = f"EQ-{int(match.group(1)):03d}"
+        equipment_id = text_equipment_id
     if not equipment_id and equipment_types and not session_scope and message:
         equipment_id = _equipment_by_type(text, line_id or _line_from_text(text), equipment_lines, equipment_types)
     if equipment_id and equipment_lines is not None and equipment_id not in equipment_lines:
@@ -86,7 +96,14 @@ def resolve_scope(
 
     # 설비가 정해졌으면 그 설비가 속한 라인이 정답이다 (질문·요청의 라인과 어긋나도 마스터를 따른다).
     if equipment_id and equipment_lines is not None:
-        line_id = equipment_lines.get(equipment_id, line_id)
+        master_line_id = equipment_lines.get(equipment_id)
+        if master_line_id is None:
+            raise ScopeError(f"등록되지 않은 설비입니다: {equipment_id}")
+        if text_line_id and text_line_id != master_line_id:
+            raise ScopeError(f"설비({equipment_id})의 마스터 라인({master_line_id})과 질문 라인({text_line_id})이 일치하지 않습니다")
+        if line_id and line_id != master_line_id:
+            raise ScopeError(f"설비({equipment_id})의 마스터 라인({master_line_id})과 요청 라인({line_id})이 일치하지 않습니다")
+        line_id = master_line_id
 
     if not line_id and not equipment_id:
         raise ScopeError(NEED_SCOPE_MESSAGE)

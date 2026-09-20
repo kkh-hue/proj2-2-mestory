@@ -161,7 +161,7 @@ class ReportRequest(BaseModel):
 # 경로가 두 개인 이유: 가이드 6쪽 공통 배포 구조가 `POST /api/agent`를 요구한다.
 # 기존 `/report`를 쓰는 프론트·연습 스크립트가 있으므로 지우지 않고 둘 다 받는다.
 # (FastAPI의 라우트 데코레이터는 원래 함수를 그대로 돌려주므로 이렇게 겹쳐 쓸 수 있다.)
-async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]] | None:
+async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]]:
     """({설비ID: 라인ID}, {설비ID: 종류}) — CSV/DB 모드 공통. 못 읽으면 None (검증만 건너뛴다)."""
     try:
         from mcp_server.tools.data_loader import load_equipment
@@ -174,7 +174,7 @@ async def _load_equipment_master() -> tuple[dict[str, str], dict[str, str]] | No
         )
     except Exception as exc:
         logger.warning("설비 마스터를 읽지 못해 설비 검증을 건너뜁니다: %s", exc)
-        return None
+        raise DatabaseUnavailableError("설비 마스터를 조회하지 못했습니다") from exc
 
 
 async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, str | None]:
@@ -183,7 +183,7 @@ async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, 
     try:
         return resolve_scope(
             request.message, request.line_id, request.equipment_id,
-            master[0] if master else None, session_scope, master[1] if master else None,
+            master[0], session_scope, master[1],
         )
     except ScopeError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
