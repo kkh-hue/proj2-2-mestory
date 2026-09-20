@@ -53,7 +53,7 @@ DATASET = REPO_ROOT / "evals" / "dataset_multimodal.jsonl"
 RUNS = REPO_ROOT / "evals" / "runs"        # 회차 결과 저장 위치
 
 from backend.services.llm import (  # noqa: E402
-    FALLBACK_MESSAGE,
+    AnalysisInfrastructureError,
     generate_report,
     get_model_name,
     last_agent_steps,
@@ -179,25 +179,16 @@ RETRIES = 2        # --retries 로 덮어쓴다
 RETRY_WAIT = 130   # --retry-wait 로 덮어쓴다 (402의 Retry-After가 120초였다)
 
 
-def is_fallback(report) -> bool:
-    """고정 안전 응답(폴백)인지 판별한다.
-
-    폴백은 '모델이 틀렸다'가 아니라 '측정을 못 했다'는 뜻이다.
-    인프라 오류(MCP 기동 실패, API 402/404/429 등)일 때 llm.py가 돌려주는 값이므로
-    이걸 0점으로 세면 모델 점수가 오염된다 — 실제로 한 번 그렇게 재서
-    contract 0.700이라는 틀린 숫자가 나왔다.
-    """
-    return report.confidence_note == FALLBACK_MESSAGE
-
-
 def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
              retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
     """한 케이스를 돌린다. 폴백이 나오면 기다렸다 다시 시도한다.
 
     wait_sec 기본값이 130초인 이유: OpenRouter가 402(in_flight_budget_exhausted)와
     함께 주는 Retry-After 헤더가 120초였다. 여유를 조금 더 뒀다.
-    llm.py가 예외를 삼키고 폴백을 돌려주므로 여기서는 상태 코드를 볼 수 없다.
-    그래서 '폴백이 나왔다'는 사실만으로 재시도한다.
+
+    llm.py는 인프라 오류를 AnalysisInfrastructureError로 올려 준다(예전에는 폴백
+    리포트를 돌려줬다). 예외로 받는 쪽이 정확하다 — 모델이 우연히 비슷한 문장을
+    적어 보낸 '정상 응답'과 헷갈리지 않기 때문이다.
     """
     kwargs = dict(case["request"])
     kwargs["images"] = [data_url(case["image"])] if with_image else None
@@ -211,11 +202,17 @@ def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
     kwargs["trace_session_id"] = f"eval-{tag}{'' if with_image else '-noimg'}"
     kwargs["user_id"] = "eval-runner"
 
+    report, elapsed = None, 0.0
     for attempt in range(retries + 1):
         t0 = time.perf_counter()
-        report = asyncio.run(generate_report(**kwargs))
+        try:
+            report = asyncio.run(generate_report(**kwargs))
+        except AnalysisInfrastructureError:
+            # ⚠️ 이걸 0점으로 세면 안 된다. 모델이 틀린 게 아니라 측정을 못 한 것이다.
+            #    실제로 그렇게 재서 contract 0.700이라는 틀린 숫자가 나온 적이 있다.
+            report = None
         elapsed = time.perf_counter() - t0
-        if not is_fallback(report):
+        if report is not None:
             return report, elapsed, False
 
         # 폴백이 났다. 재시도할 가치가 있는 오류인지 llm.py가 남긴 원인을 보고 판단한다.
@@ -234,7 +231,7 @@ def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
                   f"{wait_sec}초 후 재시도 ({attempt + 1}/{retries})")
             time.sleep(wait_sec)
 
-    return report, elapsed, True  # 끝까지 폴백 = 측정 불가
+    return None, elapsed, True  # 끝까지 실패 = 측정 불가 (report는 쓰지 않는다)
 
 
 def do_run(tag: str, skip_control: bool) -> dict:
