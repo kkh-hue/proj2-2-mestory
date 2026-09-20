@@ -74,10 +74,11 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     start = datetime(2026, 9, 19, 9, 0)
     report_created = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
     downtime_rows = [
-        ("LOG-NORMAL", "EQ-001", "LINE-A", "E-101", start, False, True, "프레스", "LINE-A", "정상 설비 이벤트"),
-        ("LOG-WARNING", "EQ-002", "LINE-LOG", "E-102", start, False, True, "프레스", "LINE-MASTER", "주의 설비 이벤트"),
-        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
-        ("LOG-STOPPED-CLOSED", "EQ-003", "LINE-A", "E-104", start, False, True, "프레스", "LINE-A", "이미 끝난 이벤트"),
+        ("LOG-NORMAL", "EQ-001", "LINE-A", "E-101", start, False, False, True, "프레스", "LINE-A", "정상 설비 이벤트"),
+        ("LOG-WARNING", "EQ-002", "LINE-LOG", "E-102", start, False, False, True, "프레스", "LINE-MASTER", "주의 설비 이벤트"),
+        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
+        ("LOG-FUTURE-END", "EQ-003", "LINE-A", "E-105", start, False, True, True, "프레스", "LINE-A", "종료 예정 정지 이벤트"),
+        ("LOG-STOPPED-CLOSED", "EQ-003", "LINE-A", "E-104", start, False, False, True, "프레스", "LINE-A", "이미 끝난 이벤트"),
     ]
     report_rows = [
         ("report-1", "EQ-001", "LINE-A", "조치 확인", report_created, True, "프레스", "LINE-A"),
@@ -96,6 +97,8 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
 
     alerts = asyncio.run(db.list_alerts(as_of=day))
     by_id = {alert["id"]: alert for alert in alerts}
+    assert "d.end_time >= %s" in connection.queries[0][0]
+    assert connection.queries[0][1][0].date() == day
 
     assert "downtime-LOG-NORMAL" not in by_id
     assert (by_id["downtime-LOG-WARNING"]["tone"], by_id["downtime-LOG-WARNING"]["tag"]) == ("warning", "주의")
@@ -103,6 +106,7 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     assert "MASTER라인" in by_id["downtime-LOG-WARNING"]["title"]
     assert (by_id["downtime-LOG-STOPPED"]["tone"], by_id["downtime-LOG-STOPPED"]["tag"]) == ("critical", "긴급")
     assert "진행 중입니다" in by_id["downtime-LOG-STOPPED"]["description"]
+    assert "진행 중입니다" in by_id["downtime-LOG-FUTURE-END"]["description"]
     # 설비가 정지여도 이미 끝난 행은 "진행 중"이 아니다 (태그는 설비 상태를 따른다)
     assert by_id["downtime-LOG-STOPPED-CLOSED"]["tag"] == "긴급"
     assert "있었습니다" in by_id["downtime-LOG-STOPPED-CLOSED"]["description"]
@@ -113,10 +117,10 @@ def test_정상_이벤트가_많아도_상태_필터링_뒤_limit을_적용한�
     day = date(2026, 9, 20)
     start = datetime(2026, 9, 19, 9, 0)
     normal_rows = [
-        (f"LOG-NORMAL-{index}", f"EQ-NORMAL-{index}", "LINE-A", "E-101", start, False, True, "프레스", "LINE-A", "정상 설비 이벤트")
+        (f"LOG-NORMAL-{index}", f"EQ-NORMAL-{index}", "LINE-A", "E-101", start, False, False, True, "프레스", "LINE-A", "정상 설비 이벤트")
         for index in range(30)
     ]
-    warning_row = ("LOG-WARNING", "EQ-WARNING", "LINE-A", "E-102", start, False, True, "프레스", "LINE-A", "주의 설비 이벤트")
+    warning_row = ("LOG-WARNING", "EQ-WARNING", "LINE-A", "E-102", start, False, False, True, "프레스", "LINE-A", "주의 설비 이벤트")
     connection = _Connection([normal_rows + [warning_row], [], []])
     monkeypatch.setattr(db, "_connect", AsyncMock(return_value=connection))
     monkeypatch.setattr(
@@ -138,8 +142,8 @@ def test_마스터에_없는_설비의_다운타임_알림은_숨긴다(monkeypa
     day = date(2026, 9, 20)
     start = datetime(2026, 9, 19, 9, 0)
     rows = [
-        ("LOG-GHOST", "EQ-058", "LINE-E", "E-102", start, False, True, None, None, "마스터에 없는 설비"),
-        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
+        ("LOG-GHOST", "EQ-058", "LINE-E", "E-102", start, False, False, True, None, None, "마스터에 없는 설비"),
+        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
     ]
     connection = _Connection([rows, [], []])
     monkeypatch.setattr(db, "_connect", AsyncMock(return_value=connection))
