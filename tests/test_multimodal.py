@@ -336,7 +336,12 @@ def test_AC11_두_경로가_같은_응답을_준다(api, path):
 
 
 def test_AC11_이미지를_보내면_그대로_전달된다(api):
-    """라우터는 검증만 하고 generate_report로 넘긴다 (해석하지 않는다)."""
+    """라우터는 검증만 하고 generate_report로 넘긴다 (이미지를 해석하지 않는다).
+
+    line_id가 LINE-A인 이유: resolve_scope()(backend/scope.py)가 설비ID로 설비
+    마스터를 조회해 라인을 채운다. 라우터가 이미지를 해석한 결과가 아니라
+    마스터 조회 결과이므로, 이 시험의 취지(라우터는 해석하지 않는다)는 유지된다.
+    """
     module, generator = api
     generator.side_effect = None
     generator.return_value = module.DowntimeReport(
@@ -357,6 +362,6 @@ def test_AC11_이미지를_보내면_그대로_전달된다(api):
     call_kwargs = dict(generator.call_args.kwargs)
     call_kwargs.pop("report_id")  # 요청마다 새로 만드는 UUID — 값 자체는 다른 시험에서 확인
     assert call_kwargs == {
-        "line_id": None, "equipment_id": "EQ-001", "date_from": None, "date_to": None,
+        "line_id": "LINE-A", "equipment_id": "EQ-001", "date_from": None, "date_to": None,
         "session_id": None, "images": [FAKE_IMAGE], "message": None,
     }
