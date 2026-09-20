@@ -128,3 +128,21 @@ def test_정상_이벤트가_많아도_상태_필터링_뒤_limit을_적용한�
 
     assert [alert["id"] for alert in alerts] == ["downtime-LOG-WARNING"]
     assert "limit" not in connection.queries[0][0].lower()
+
+
+def test_마스터에_없는_설비의_다운타임_알림은_숨긴다(monkeypatch):
+    day = date(2026, 9, 20)
+    start = datetime(2026, 9, 19, 9, 0)
+    rows = [
+        ("LOG-GHOST", "EQ-058", "LINE-E", "E-102", start, False, True, None, None, "마스터에 없는 설비"),
+        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
+    ]
+    connection = _Connection([rows, [], []])
+    monkeypatch.setattr(db, "_connect", AsyncMock(return_value=connection))
+    monkeypatch.setattr(
+        db, "list_equipment_status", AsyncMock(return_value=[{"equipment_id": "EQ-003", "status": "정지"}])
+    )
+
+    alerts = asyncio.run(db.list_alerts(as_of=day))
+
+    assert [alert["id"] for alert in alerts] == ["downtime-LOG-STOPPED"]

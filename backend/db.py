@@ -764,6 +764,10 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
         # 없는 설비는 설비현황과 비교할 수 없으므로 기존 이벤트 표기를 유지한다.
         if equipment_status == "정상":
             continue
+        # 마스터에 없는 설비(예: EQ-058)는 설비현황에 나오지 않아 눌러도 대응 화면이 없다.
+        # 설비현황 조회가 통째로 실패해 목록이 비었을 때는 전부 숨기지 않도록 그대로 둔다.
+        if equipment_status is None and equipment_status_by_id:
+            continue
         if equipment_status is None:
             tone = "critical" if is_open else "warning"
             tag = "긴급" if is_open else "주의"
