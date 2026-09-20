@@ -43,9 +43,12 @@ function DowntimeAnalysisRun() {
   const [equipmentId, setEquipmentId] = useState(params.get("equipment_id") ?? "");
   const [validationError, setValidationError] = useState("");
   const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
+  const [equipmentError, setEquipmentError] = useState("");
 
   useEffect(() => {
-    listEquipment().then(setEquipment).catch(() => {});
+    listEquipment()
+      .then(setEquipment)
+      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
   }, []);
   const lines = useMemo(() => Array.from(new Set(equipment.map((e) => e.line_id))).sort(), [equipment]);
   const equipmentOptions = useMemo(
@@ -162,21 +165,21 @@ function DowntimeAnalysisRun() {
         </section>
       )}
 
-      {!loading && error && (
+      {!loading && (error || equipmentError) && (
         <section className="status-card status-error" role="alert">
           <strong>분석을 완료하지 못했습니다.</strong>
-          <span>{error}</span>
+          <span>{error || equipmentError}</span>
         </section>
       )}
 
-      {!loading && !error && !result && (
+      {!loading && !error && !equipmentError && !result && (
         <section className="status-card status-empty">
           <strong>아직 분석 결과가 없습니다.</strong>
           <span>조건을 확인하고 "분석 실행"을 누르면 결과가 여기에 표시됩니다.</span>
         </section>
       )}
 
-      {!loading && !error && result && (
+      {!loading && !error && !equipmentError && result && (
         <>
           <div className="dashboard-grid">
             <CauseBreakdown causes={result.causes} />
