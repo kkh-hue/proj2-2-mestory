@@ -179,7 +179,8 @@ def test_대시보드_전일_대비는_같은_경과_시간끼리_비교한다(m
             raise RuntimeError("stop after first query")
 
     monkeypatch.setattr(db, "_connect", AsyncMock(return_value=_Conn()))
-    asyncio.run(db.get_dashboard_summary(day))
+    with pytest.raises(db.DatabaseUnavailableError):
+        asyncio.run(db.get_dashboard_summary(day))
     kpi_params = seen["params"][0]
     assert kpi_params[0:2] == (day, datetime(2026, 9, 16))
     assert kpi_params[2:4] == (date(2026, 9, 14), datetime(2026, 9, 15))
