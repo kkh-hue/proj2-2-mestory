@@ -15,7 +15,7 @@ AI 코딩 에이전트(Claude Code, Codex, Cursor 등)가 이 저장소에서 �
 | 백엔드 | FastAPI, Pydantic v2, uvicorn |
 | 에이전트 | LangChain 0.3.x (`create_tool_calling_agent` + `AgentExecutor`) |
 | 도구 | MCP 1.x (FastMCP), stdio 방식 |
-| 모델 | OpenRouter 경유 `openai/gpt-4o-mini` (vision 지원) |
+| 모델 | OpenRouter 경유 `openai/gpt-5-mini` (vision 지원, ZDR 호환 — 아래 "알려진 문제" 참고) |
 | 관측 | Langfuse 4.x |
 | 데이터 | pandas / Postgres(psycopg 3) — 환경변수로 전환 |
 | 프론트 | Next.js 14, React 18 |
@@ -27,9 +27,9 @@ AI 코딩 에이전트(Claude Code, Codex, Cursor 등)가 이 저장소에서 �
 
 | 경로 | 내용 |
 |---|---|
-| `backend/` | FastAPI 서버. `services/llm.py`(LangChain 에이전트 + MCP 연결), `scope.py`(조회 범위 확정) |
+| `backend/` | FastAPI 서버. `services/llm.py`(LangChain 에이전트 + MCP 연결), `scope.py`(조회 범위 확정), `db.py`(Postgres 저장·집계), `analysis.py`(다운타임 분석 집계) |
 | `mcp_server/` | MCP 서버. `tools/*.py`(조회 함수) + `server.py`(MCP 포장) — **분리 유지** |
-| `frontend/` | Next.js 챗봇 UI |
+| `frontend/` | Next.js — 대시보드·다운타임 분석·AI 원인 분석(채팅)·리포트·설비 현황·알림 (모두 백엔드 API 연동) |
 | `skills/SKILL.md` | LLM 판단 기준 문서. 프롬프트에 통째로 들어간다 |
 | `docs/specs/` | 기능별 Spec (AC 포함) |
 | `tests/` | pytest. Spec의 AC와 1:1 |

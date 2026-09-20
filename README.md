@@ -40,7 +40,7 @@ curl -X POST https://mestory.up.railway.app/report \
 
 ## 🤖 LLM 출력 계약 (필수 조건 3)
 
-`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 최대 3단계로 시도합니다(① 기본 스키마 → ② 프롬프트를 보강해 같은 스키마로 재시도 → ③ 축소 스키마로 재시도). **3단계가 모두 실패하면 빈 리포트로 감추지 않고 HTTP 503을 반환**하며 리포트·ID를 저장하지 않습니다.
+`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 최대 3단계로 시도합니다(① 기본 스키마 → ② 프롬프트를 보강해 같은 스키마로 재시도 → ③ 축소 스키마로 재시도). **3단계가 모두 실패하면 빈 리포트로 감추지 않고 HTTP 503을 반환**하며 리포트·ID를 저장하지 않습니다. 사용자가 준 조건(`equipment_id`·`line_id`·`period`)과 `used_image`는 LLM 출력을 믿지 않고 코드가 덮어씁니다.
 
 - 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`, `_generate_with_retries()`, `generate_report()`
 - **모델**: `MESTORY_LLM_MODEL`로 정합니다(코드 기본값은 `openai/gpt-4o-mini`, `.env.example`·배포는 `openai/gpt-5-mini`). 교육과정 보안 정책상 ZDR을 끌 수 없어 모델에 따라 OpenRouter가 404를 낼 수 있으니, 모델을 바꾸기 전에 `python scripts/check_zdr.py`로 확인하세요([AGENTS.md](./AGENTS.md) "알려진 문제" 참고).
@@ -142,7 +142,7 @@ backend/                  FastAPI 백엔드
 └── README.md                진행상황
 
 mcp_server/                MCP 서버 (stdio)
-├── server.py                FastMCP 진입점 — 도구 3개 등록
+├── server.py                FastMCP 진입점 — 도구 3개(get_downtime_logs·get_error_code_info·get_maintenance_history) 등록
 ├── tools/
 │   ├── data_loader.py        CSV 또는 Postgres에서 표 읽기 (MESTORY_DATA_SOURCE로 전환)
 │   ├── downtime.py           조건별 정지 기록 조회·요약
@@ -157,11 +157,13 @@ frontend/                  Next.js 14 — 대시보드·다운타임 분석·AI 
 ├── types/                   백엔드 응답과 1:1로 맞춘 타입 (report·dashboard·equipment·alert·downtimeAnalysis)
 └── README.md                진행상황
 
-skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석)
+skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석) — 프롬프트에 통째로 주입
 tests/                     pytest — Spec의 AC와 1:1 (데이터가 없으면 일부 skip)
 scripts/                   seed_db.py(CSV→Postgres) · check_zdr.py(모델 ZDR 진단) · 멀티모달 평가셋 생성·채점
 evals/                      평가셋 (dataset.jsonl 30건, dataset_multimodal.jsonl 10건) · runs/(측정 기록)
 EVAL_REPORT.md              개선 전후 지표
+tests/                      pytest — docs/specs의 AC와 1:1
+scripts/                    seed_db.py(CSV→Postgres) · check_zdr.py · 멀티모달 평가셋 생성·채점 스크립트
 
 data/                       CSV 4개 — .gitignore 대상이라 저장소에 없음 (docs/에 원본 CSV 사본이 있음)
 
@@ -169,11 +171,13 @@ docs/
 ├── MESTORY_PRD.md            제품 요구사항 문서
 ├── MESTORY_기능목록.md       기능 목록 (P0/P1, 범위 밖)
 ├── MESTORY_문제정의서.docx    문제 정의서
+├── MESTORY_팀착수체크리스트.docx / MESTORY_평가질문_계획보완10_신규20.xlsx   착수·평가 보조 자료
 ├── SCAFFOLD.md               초기 스캐폴딩 안내
 ├── *.csv                     시뮬레이션 데이터 원본 (downtime_log·equipment_master·error_code_dict·maintenance_history)
+├── images/                   MCP Inspector 캡처
 └── specs/                    기능별 Spec 문서 (`_example.md` 형식)
 
-docker-compose.yml / Dockerfile   `docker compose up`으로 api+db 실행 (프론트엔드는 포함하지 않음 — Railway에 별도 배포)
+docker-compose.yml / Dockerfile   `docker compose up`으로 api+db 실행 (프론트엔드는 포함하지 않음 — Railway에 별도 배포, 알려진 문제는 AGENTS.md 참고)
 AGENTS.md / CLAUDE.md       AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
 ```
 
