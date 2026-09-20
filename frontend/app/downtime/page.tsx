@@ -91,6 +91,7 @@ function DowntimeAnalysisView() {
   const [data, setData] = useState<DowntimeAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [equipmentError, setEquipmentError] = useState("");
   const [selectedCause, setSelectedCause] = useState<AnalysisCause | null>(null);
 
   const rangeInvalid = dateFrom > dateTo;
@@ -98,7 +99,7 @@ function DowntimeAnalysisView() {
   useEffect(() => {
     listEquipment()
       .then(setEquipment)
-      .catch(() => {}); // 선택지를 못 불러와도 "전체"로는 계속 조회할 수 있다
+      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
   }, []);
 
   useEffect(() => {
@@ -142,6 +143,7 @@ function DowntimeAnalysisView() {
   }
 
   const empty = data !== null && data.event_count === 0;
+  const pageError = error || equipmentError;
 
   return (
     <main className="page">
@@ -196,14 +198,14 @@ function DowntimeAnalysisView() {
         </section>
       )}
 
-      {error && !loading && (
+      {pageError && !loading && (
         <section className="status-card status-error" role="alert">
           <strong>다운타임 분석을 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span>{pageError}</span>
         </section>
       )}
 
-      {data && !loading && !error && !rangeInvalid && (
+      {data && !loading && !pageError && !rangeInvalid && (
         <>
           <div className="dashboard-grid">
             <section className="cause-breakdown-card">

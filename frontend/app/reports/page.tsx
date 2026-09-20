@@ -25,9 +25,12 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
+  const [equipmentError, setEquipmentError] = useState("");
 
   useEffect(() => {
-    listEquipment().then(setEquipment).catch(() => {}); // 이름을 못 불러와도 ID로 표시된다
+    listEquipment()
+      .then(setEquipment)
+      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
     listReports()
       .then(setReports)
       .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
@@ -72,14 +75,14 @@ export default function ReportsPage() {
           <span className="spinner" /> 리포트를 불러오는 중입니다.
         </section>
       )}
-      {!loading && error && (
+      {!loading && (error || equipmentError) && (
         <section className="status-card status-error" role="alert">
           <strong>리포트를 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span>{error || equipmentError}</span>
         </section>
       )}
 
-      {!loading && !error && (
+      {!loading && !error && !equipmentError && (
         <div className="reports-grid">
           <section>
             <div className="reports-list-head">
