@@ -879,6 +879,10 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
     - 가동률: as_of 기준 최근 7일 중 다운타임이 차지한 비율을 뺀 값 (음수 downtime_min은
       데이터 오류라서 집계에서 뺀다 — scripts/seed_db.py의 함정 데이터 설명 참고).
     - as_of를 안 주면 오늘 기준(기존과 동일).
+    - active_until: 지금 진행 중인 다운타임 중 가장 빨리 끝나는 것의 종료 시각(ISO,
+      끝이 정해진 것만). 프론트가 폴링(1분) 대신 이 시각에 정확히 맞춰 다시 조회해서
+      "정지 → 정상"이 그 순간 바로 반영되게 하는 용도 — docs/specs 없이 as_of=None(오늘)
+      화면에서만 의미 있다. 끝이 안 정해졌거나(end_time is null) 정지가 아니면 None.
     """
     day_start = as_of or _today_kst()
     day_end = day_start + timedelta(days=1)
@@ -898,6 +902,20 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
                         where d.equipment_id = e.equipment_id and d.start_time < %s
                           and (d.end_time is null or d.end_time >= %s)
                     ) as is_down,
+                    (select min(d.end_time) from downtime_log d
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and d.end_time is not null and d.end_time >= %s) as active_until,
+                    -- 지금 정지 중인 원인 — is_down 판정과 같은 조건(활성 다운타임) 중
+                    -- 가장 최근에 시작한 것 하나를 대표로 보여준다. 카드에 "왜 정지인지" 적기 위함.
+                    (select ec.description from downtime_log d
+                     left join error_code_dict ec on ec.error_code = d.error_code
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and (d.end_time is null or d.end_time >= %s)
+                     order by d.start_time desc limit 1) as active_cause_description,
+                    (select d.error_code from downtime_log d
+                     where d.equipment_id = e.equipment_id and d.start_time < %s
+                       and (d.end_time is null or d.end_time >= %s)
+                     order by d.start_time desc limit 1) as active_cause_code,
                     coalesce(sum(d2.downtime_min) filter (
                         where d2.start_time >= %s and d2.start_time < %s and d2.downtime_min > 0
                     ), 0) as recent_downtime_min
@@ -906,7 +924,7 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
                 group by e.equipment_id, e.line_id, e.equipment_type
                 order by e.equipment_id
                 """,
-                (cutoff, cutoff, cutoff, window_start, cutoff),
+                (cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, cutoff, window_start, cutoff),
             )
             rows = await cur.fetchall()
     except Exception as exc:
@@ -914,7 +932,8 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
         raise DatabaseUnavailableError("데이터베이스에서 설비 상태를 조회하지 못했습니다") from exc
 
     result: list[dict] = []
-    for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min in rows:
+    for (equipment_id, line_id, equipment_type, last_checked, is_down, active_until,
+         active_cause_description, active_cause_code, recent_downtime_min) in rows:
         utilization_pct = max(0.0, min(100.0, 100.0 - (float(recent_downtime_min or 0) / _RECENT_WINDOW_MINUTES * 100)))
         if is_down:
             status = "정지"
@@ -922,6 +941,9 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
             status = "주의"
         else:
             status = "정상"
+        # 코드(E-102)가 아니라 사람이 읽는 이름을 우선 보여준다 — 사전에 없는 코드는
+        # 지어내지 않고 코드 그대로 둔다(list_alerts와 같은 원칙).
+        active_cause = (active_cause_description or active_cause_code) if is_down else None
         result.append({
             "equipment_id": equipment_id,
             "line_id": line_id,
@@ -929,5 +951,9 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
             "status": status,
             "utilization_pct": round(utilization_pct, 1),
             "last_checked": last_checked.isoformat() if last_checked else None,
+            # downtime_log의 시각은 시간대 없는 값(이미 KST)이라, KST를 명시해서 내보내야
+            # 브라우저가 자기 로컬 시간대로 잘못 해석하지 않는다.
+            "active_until": _aware(active_until).isoformat() if active_until else None,
+            "active_cause": active_cause,
         })
     return result

@@ -10,15 +10,25 @@ import Topbar from "../../components/Topbar";
 import { IconCheck, IconReport, IconStopCircle, IconTriangleWarning } from "../../components/icons";
 import { listEquipment } from "../../lib/api";
 import { useLiveTick } from "../../lib/useLiveTick";
+import { useNowTick } from "../../lib/useNowTick";
 import { todayKst } from "../../lib/date";
 import type { EquipmentSummaryItem } from "../../types/equipment";
+
+function formatKstClock(date: Date): string {
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).format(date);
+}
 
 export default function EquipmentPage() {
   const [items, setItems] = useState<EquipmentSummaryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [asOf, setAsOf] = useState(todayKst());
-  const tick = useLiveTick(asOf);
+  // "정지" 설비가 정확히 언제 끝나는지(active_until) 알면 그 순간에 딱 맞춰 다시
+  // 불러온다 — 60초 폴링만 쓰면 최대 60초까지 늦게 "2대 → 1대"로 바뀐다.
+  const activeUntils = items.filter((item) => item.status === "정지").map((item) => item.active_until);
+  const tick = useLiveTick(asOf, activeUntils);
   const loadedFor = useRef<string | null>(null); // 같은 날짜를 다시 조회할 땐 화면을 로딩 상태로 바꾸지 않는다
 
   useEffect(() => {
@@ -46,16 +56,19 @@ export default function EquipmentPage() {
   const warnCount = items.filter((item) => item.status === "주의").length;
   const stopCount = items.filter((item) => item.status === "정지").length;
 
-  // "정지"의 기준 시각이 오늘/과거 날짜에 따라 달라(backend/db.py의 _cutoff) 헷갈리기 쉬워서
-  // 카드 설명에 그대로 풀어 적는다. 오늘이면 지금 이 순간(1분마다 자동 갱신), 과거 날짜를
-  // 고르면 그 날짜가 끝나는 자정 시점 기준으로 "그때 안 끝난 다운타임"을 정지로 센다.
+  // "정지"의 판정 기준·시각이 오늘/과거 날짜에 따라 달라(backend/db.py의 _cutoff) 헷갈리기
+  // 쉬워서, 무엇을 보고 정하는지(설비별 다운타임 기록의 종료 시각)까지 풀어 적는다.
+  // 원인·예상 종료 시각은 각 설비 카드(EquipmentCard)에 따로 표시된다.
   const isToday = asOf === todayKst();
   const stopNote = isToday
-    ? "지금 이 순간(실시간) 다운타임이 진행 중인 설비 — 1분마다 자동 갱신"
-    : `${asOf} 자정까지 다운타임이 끝나지 않았던 설비`;
+    ? "설비별 다운타임 기록(시작~종료 시각)에서, 종료 시각이 아직 지나지 않은 게 있으면 정지로 셉니다. 카드마다 원인·예상 종료 시각이 표시됩니다."
+    : `${asOf} 24:00 시점에 같은 방식으로 판정합니다 — 그때까지 종료 시각이 안 지난 다운타임이 있던 설비입니다.`;
   const warnNote = isToday
     ? "지금 시점 기준 최근 7일 가동률 95% 미만인 설비"
     : `${asOf} 기준 최근 7일 가동률 95% 미만인 설비`;
+
+  // 오늘 화면에서만 의미가 있다 — 과거 날짜는 시간이 안 흐르니 시계를 보여줄 이유가 없다.
+  const now = useNowTick(1000);
 
   const summary = [
     { key: "total", label: "전체 설비", value: `${items.length}대`, note: "등록된 전체 설비 수", Icon: IconReport, tone: "tone-purple" },
@@ -73,6 +86,12 @@ export default function EquipmentPage() {
         onDateChange={setAsOf}
         action={<NewAnalysisModal />}
       />
+
+      {isToday && (
+        <p className="live-clock" aria-live="off">
+          <span className="live-clock-dot" aria-hidden="true" /> 지금 {formatKstClock(now)} 기준 — "정지" 카드는 실시간으로 갱신됩니다
+        </p>
+      )}
 
       {loading && (
         <section className="status-card status-loading" aria-live="polite">
