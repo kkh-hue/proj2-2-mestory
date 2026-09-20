@@ -34,6 +34,10 @@ logger = logging.getLogger(__name__)
 _SCHEMA_READY = False
 
 
+class DatabaseUnavailableError(RuntimeError):
+    """DB 연결 또는 조회 실패를 API 계층에 알리기 위한 공통 예외."""
+
+
 def _get_database_url() -> str | None:
     return os.getenv("DATABASE_URL") or os.getenv("DATABASE_PUBLIC_URL")
 
@@ -41,8 +45,11 @@ def _get_database_url() -> str | None:
 async def _connect() -> psycopg.AsyncConnection:
     url = _get_database_url()
     if not url:
-        raise RuntimeError("DATABASE_URL(또는 DATABASE_PUBLIC_URL)이 설정되지 않았습니다.")
-    return await psycopg.AsyncConnection.connect(url, connect_timeout=10)
+        raise DatabaseUnavailableError("DATABASE_URL(또는 DATABASE_PUBLIC_URL)이 설정되지 않았습니다.")
+    try:
+        return await psycopg.AsyncConnection.connect(url, connect_timeout=10)
+    except Exception as exc:
+        raise DatabaseUnavailableError("데이터베이스에 연결하지 못했습니다") from exc
 
 
 async def init_db() -> None:
@@ -148,7 +155,7 @@ async def get_session_scope(session_id: str) -> tuple[str | None, str | None] | 
             row = await cur.fetchone()
     except Exception as exc:
         logger.warning("세션 범위 조회 실패 (session_id=%s): %s", session_id, exc)
-        return None
+        raise DatabaseUnavailableError("데이터베이스에서 세션 범위를 조회하지 못했습니다") from exc
     if row is None:
         return None
     line_id = row[0] if row[0] and row[0].startswith("LINE-") else None
@@ -190,7 +197,7 @@ async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessag
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 기록 조회 실패 (session_id=%s): %s", session_id, exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 기록을 조회하지 못했습니다") from exc
 
     messages: list[BaseMessage] = [
         HumanMessage(content=content) if role == "user" else AIMessage(content=content)
@@ -236,7 +243,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 턴 조회 실패 (session_id=%s): %s", session_id, exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 기록을 조회하지 못했습니다") from exc
 
     turns: list[dict] = []
     for (role, content, display_content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
@@ -295,7 +302,7 @@ async def list_chat_sessions(limit: int = 30) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("대화 세션 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 대화 세션을 조회하지 못했습니다") from exc
 
     return [
         {
@@ -321,7 +328,7 @@ async def list_reports(limit: int = 50) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("리포트 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 리포트 목록을 조회하지 못했습니다") from exc
 
     return [
         {
@@ -346,7 +353,7 @@ async def get_report(report_id: str) -> dict | None:
             row = await cur.fetchone()
     except Exception as exc:
         logger.warning("리포트 조회 실패 (report_id=%s): %s", report_id, exc)
-        return None
+        raise DatabaseUnavailableError("데이터베이스에서 리포트를 조회하지 못했습니다") from exc
 
     if row is None:
         return None
@@ -481,14 +488,7 @@ async def get_dashboard_summary(as_of: date | None = None) -> dict:
             latest_report_row = await latest_report_cur.fetchone()
     except Exception as exc:
         logger.warning("대시보드 집계 실패: %s", exc)
-        return {
-            "kpi": {"today_downtime_min": 0, "avg_recovery_min": 0, "reports_today": 0, "equipment_count": 0,
-                    "utilization_pct": 100.0, "downtime_delta": _delta(0, 0), "recovery_delta": _delta(0, 0),
-                    "reports_delta": _delta(0, 0), "utilization_delta": _delta(0, 0)},
-            "trend": {"labels": [], "lines": []},
-            "recent_events": [],
-            "latest_report": None,
-        }
+        raise DatabaseUnavailableError("데이터베이스에서 대시보드 데이터를 조회하지 못했습니다") from exc
 
     # 라인별 일별 다운타임을 "라벨(날짜) × 라인" 표로 펼친다 — 값 없는 칸은 0.
     days = sorted({row[0] for row in trend_rows})
@@ -750,7 +750,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
             analyzed_scopes = await scope_cur.fetchall()
     except Exception as exc:
         logger.warning("알림 목록 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 알림을 조회하지 못했습니다") from exc
 
     downtime_alerts: list[dict] = []
     for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
@@ -882,7 +882,7 @@ async def list_equipment_status(as_of: date | None = None) -> list[dict]:
             rows = await cur.fetchall()
     except Exception as exc:
         logger.warning("설비 상태 조회 실패: %s", exc)
-        return []
+        raise DatabaseUnavailableError("데이터베이스에서 설비 상태를 조회하지 못했습니다") from exc
 
     result: list[dict] = []
     for equipment_id, line_id, equipment_type, last_checked, is_down, recent_downtime_min in rows:

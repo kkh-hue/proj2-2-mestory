@@ -114,6 +114,82 @@ def test_report_contract(api, payload):
     }
 
 
+def test_report_analysis_infrastructure_failure_returns_503_without_report_id(api):
+    module, generator = api()
+    generator.side_effect = module.AnalysisInfrastructureError("분석 인프라에 연결할 수 없습니다")
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"line_id": "LINE-A"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "분석 인프라에 연결할 수 없습니다"}
+    assert "x-report-id" not in response.headers
+
+
+def test_report_db_failure_returns_503(api, monkeypatch):
+    module, generator = api()
+    monkeypatch.setattr(
+        module,
+        "get_session_scope",
+        AsyncMock(side_effect=module.DatabaseUnavailableError("DB unavailable")),
+    )
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json={"message": "분석", "session_id": "session-1"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "DB unavailable"}
+    assert "x-report-id" not in response.headers
+    generator.assert_not_awaited()
+
+
+def test_empty_report_list_keeps_success_response(api, monkeypatch):
+    module, _ = api()
+    monkeypatch.setattr(module, "list_reports", AsyncMock(return_value=[]))
+
+    with TestClient(module.app) as client:
+        response = client.get("/reports")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_report_not_found_keeps_404_when_db_is_healthy(api, monkeypatch):
+    module, _ = api()
+    monkeypatch.setattr(module, "get_report", AsyncMock(return_value=None))
+
+    with TestClient(module.app) as client:
+        response = client.get("/reports/missing")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("path", "function_name"),
+    [
+        ("/chat/sessions", "list_chat_sessions"),
+        ("/chat/session-1", "list_chat_turns"),
+        ("/dashboard", "get_dashboard_summary"),
+        ("/downtime/analysis", "get_downtime_analysis"),
+        ("/alerts", "list_alerts"),
+        ("/equipment", "list_equipment_status"),
+    ],
+)
+def test_db_failure_returns_503_for_read_apis(api, monkeypatch, path, function_name):
+    module, _ = api()
+    monkeypatch.setattr(
+        module,
+        function_name,
+        AsyncMock(side_effect=module.DatabaseUnavailableError("DB unavailable")),
+    )
+
+    with TestClient(module.app) as client:
+        response = client.get(path)
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "DB unavailable"}
+
+
 def test_invalid_request_keeps_422(api):
     module, generator = api()
     with TestClient(module.app) as client:

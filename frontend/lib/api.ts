@@ -4,6 +4,9 @@ import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
 import type { DowntimeAnalysis, DowntimeAnalysisQuery } from "../types/downtimeAnalysis";
 
+const READ_REQUEST_TIMEOUT_MS = 10_000;
+const ANALYSIS_REQUEST_TIMEOUT_MS = 120_000;
+
 export class ReportApiError extends Error {
   constructor(
     public readonly status: number,
@@ -35,17 +38,41 @@ async function parseErrorBody(response: Response): Promise<unknown> {
   }
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const externalSignal = init?.signal;
+  const abortFromCaller = () => controller.abort();
+  externalSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (cause) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      throw new Error(`API 요청이 ${Math.round(timeoutMs / 1000)}초 안에 완료되지 않았습니다.`);
+    }
+    throw cause;
+  } finally {
+    clearTimeout(timeoutId);
+    externalSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 // session_id는 호출자가 관리한다. 리포트 생성 중복을 피하려고 재시도하지 않는다.
 async function postReport(
   request: ReportRequest,
   options?: { signal?: AbortSignal },
 ): Promise<{ report: DowntimeReport; reportId: string | null }> {
-  const response = await fetch(`${getBaseUrl()}/report`, {
+  const response = await fetchWithTimeout(`${getBaseUrl()}/report`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
     signal: options?.signal,
-  });
+  }, ANALYSIS_REQUEST_TIMEOUT_MS);
 
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
@@ -71,7 +98,7 @@ export async function createReportWithId(
 }
 
 export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
-  const response = await fetch(`${getBaseUrl()}/chat/${encodeURIComponent(sessionId)}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/${encodeURIComponent(sessionId)}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -79,7 +106,7 @@ export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
 }
 
 export async function listChatSessions(): Promise<ChatSessionSummary[]> {
-  const response = await fetch(`${getBaseUrl()}/chat/sessions`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/sessions`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -87,7 +114,7 @@ export async function listChatSessions(): Promise<ChatSessionSummary[]> {
 }
 
 export async function listReports(): Promise<ReportSummary[]> {
-  const response = await fetch(`${getBaseUrl()}/reports`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/reports`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -95,7 +122,7 @@ export async function listReports(): Promise<ReportSummary[]> {
 }
 
 export async function getReport(reportId: string): Promise<SavedReport> {
-  const response = await fetch(`${getBaseUrl()}/reports/${encodeURIComponent(reportId)}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/reports/${encodeURIComponent(reportId)}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -105,7 +132,7 @@ export async function getReport(reportId: string): Promise<SavedReport> {
 // asOf: "YYYY-MM-DD". 상단 날짜 선택 — 안 주면 backend가 오늘 기준으로 계산한다.
 export async function getDashboard(asOf?: string): Promise<DashboardSummary> {
   const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
-  const response = await fetch(`${getBaseUrl()}/dashboard${query}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/dashboard${query}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -114,7 +141,7 @@ export async function getDashboard(asOf?: string): Promise<DashboardSummary> {
 
 export async function listAlerts(asOf?: string): Promise<AlertItem[]> {
   const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
-  const response = await fetch(`${getBaseUrl()}/alerts${query}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/alerts${query}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -123,7 +150,7 @@ export async function listAlerts(asOf?: string): Promise<AlertItem[]> {
 
 export async function listEquipment(asOf?: string): Promise<EquipmentSummaryItem[]> {
   const query = asOf ? `?as_of=${encodeURIComponent(asOf)}` : "";
-  const response = await fetch(`${getBaseUrl()}/equipment${query}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/equipment${query}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -134,7 +161,7 @@ export async function getDowntimeAnalysis(query: DowntimeAnalysisQuery): Promise
   const params = new URLSearchParams({ date_from: query.date_from, date_to: query.date_to, status: query.status });
   if (query.line_id) params.set("line_id", query.line_id);
   if (query.equipment_id) params.set("equipment_id", query.equipment_id);
-  const response = await fetch(`${getBaseUrl()}/downtime/analysis?${params.toString()}`);
+  const response = await fetchWithTimeout(`${getBaseUrl()}/downtime/analysis?${params.toString()}`, undefined, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }

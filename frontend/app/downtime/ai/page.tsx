@@ -92,7 +92,9 @@ export default function AiAnalysisChatPage() {
   function refreshSessions() {
     listChatSessions()
       .then(setSessions)
-      .catch(() => {});
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : "세션 목록을 불러오지 못했습니다.");
+      });
   }
 
   function loadSession(id: string) {
@@ -105,7 +107,11 @@ export default function AiAnalysisChatPage() {
     const isCurrent = () => activeSessionRef.current === id;
     getChatHistory(id)
       .then((history) => isCurrent() && setTurns(history))
-      .catch(() => isCurrent() && setTurns([]))
+      .catch((cause) => {
+        if (isCurrent()) {
+          setError(cause instanceof Error ? cause.message : "대화 기록을 불러오지 못했습니다.");
+        }
+      })
       .finally(() => isCurrent() && setHydrating(false));
   }
 
@@ -128,7 +134,9 @@ export default function AiAnalysisChatPage() {
         setAllEquipment(items);
         setReviewNeeded(items.filter((item) => item.status !== "정상"));
       })
-      .catch(() => setReviewNeeded([]));
+      .catch((cause) => {
+        setError(cause instanceof Error ? cause.message : "설비 상태를 불러오지 못했습니다.");
+      });
   }, []);
 
   useEffect(() => {
@@ -191,7 +199,7 @@ export default function AiAnalysisChatPage() {
             <IconPlus /> 새 대화 시작
           </button>
           <div className="ai-session-items">
-            {sessions.length === 0 && <p className="helper-text">저장된 대화가 없습니다.</p>}
+            {sessions.length === 0 && !error && <p className="helper-text">저장된 대화가 없습니다.</p>}
             {sessions.map((s) => (
               <button
                 key={s.session_id}
@@ -219,7 +227,7 @@ export default function AiAnalysisChatPage() {
           </div>
 
           <div className="ai-chat-messages">
-            {!hydrating && turns.length === 0 && (
+            {!hydrating && turns.length === 0 && !error && (
               <>
                 <p className="helper-text">예: "EQ-021 프레스 라인의 다운타임 원인을 요약해줘"처럼 물어보세요.</p>
                 {reviewNeeded.length > 0 && (
