@@ -746,6 +746,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 """
                 select d.log_id, d.equipment_id, d.line_id, d.error_code, d.start_time,
                        (d.end_time is null) as is_open,
+                       (d.end_time is null or d.end_time >= %s) as is_currently_stopped,
                        (d.start_time >= %s) as is_recent,
                        e.equipment_type, e.line_id as master_line_id,
                        ec.description as error_description
@@ -755,7 +756,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 where d.start_time < %s and (d.end_time is null or d.start_time >= %s)
                 order by d.start_time desc
                 """,
-                (recent_start, cutoff, window_start),
+                (cutoff, recent_start, cutoff, window_start),
             )
             downtime_rows = await downtime_cur.fetchall()
 
@@ -781,7 +782,7 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
         raise DatabaseUnavailableError("데이터베이스에서 알림을 조회하지 못했습니다") from exc
 
     downtime_alerts: list[dict] = []
-    for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
+    for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_currently_stopped, is_recent,
          equipment_type, master_line_id, error_description) in downtime_rows:
         # 분석이 끝난 설비의 원본 정지 알림은 숨긴다 — "분석 완료" 알림이 그 자리를 대신한다.
         # (진행 중인 정지는 분석 후에도 아직 끝나지 않았으므로 계속 보여 준다.)
@@ -803,9 +804,8 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
             tone = "critical" if equipment_status == "정지" else "warning"
             tag = "긴급" if equipment_status == "정지" else "주의"
         display_line_id = master_line_id or line_id
-        # 문구는 설비 상태가 아니라 이 행 자신의 종료 여부로 정한다. 설비가 "정지"여도
+        # 문구는 설비 상태가 아니라 이 행의 as_of cutoff 기준 종료 여부로 정한다.
         # (예: 자정에 걸친 다른 다운타임 때문에) 이미 끝난 과거 행까지 "진행 중"이라고 하면 사실과 다르다.
-        is_currently_stopped = is_open
         # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
         # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
         cause_note = f"{error_description or error_code} 관련 " if error_code else ""
