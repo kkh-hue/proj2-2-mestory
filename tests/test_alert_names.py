@@ -150,3 +150,14 @@ def test_마스터에_없는_설비의_다운타임_알림은_숨긴다(monkeypa
     alerts = asyncio.run(db.list_alerts(as_of=day))
 
     assert [alert["id"] for alert in alerts] == ["downtime-LOG-STOPPED"]
+
+
+def test_기준_시각은_오늘이면_지금_지난_날짜면_그날_끝():
+    today = db._today_kst()
+    now_cutoff = db._cutoff(None)
+    assert now_cutoff.tzinfo is None
+    assert abs((datetime.now(db._KST).replace(tzinfo=None) - now_cutoff).total_seconds()) < 5
+    assert abs((db._cutoff(today) - now_cutoff).total_seconds()) < 5
+    past = date(2026, 3, 15)
+    assert db._cutoff(past) == datetime(2026, 3, 16, 0, 0)
+    assert db._aware(db._cutoff(past)).utcoffset().total_seconds() == 9 * 3600

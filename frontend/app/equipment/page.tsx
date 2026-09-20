@@ -3,12 +3,13 @@
 // maintenance_history에서 계산한 값이다 (지어낸 값 아님).
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NewAnalysisModal from "../../components/NewAnalysisModal";
 import EquipmentBoard from "../../components/EquipmentBoard";
 import Topbar from "../../components/Topbar";
 import { IconCheck, IconReport, IconStopCircle, IconTriangleWarning } from "../../components/icons";
 import { listEquipment } from "../../lib/api";
+import { useLiveTick } from "../../lib/useLiveTick";
 import { todayKst } from "../../lib/date";
 import type { EquipmentSummaryItem } from "../../types/equipment";
 
@@ -17,19 +18,29 @@ export default function EquipmentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [asOf, setAsOf] = useState(todayKst());
+  const tick = useLiveTick(asOf);
+  const loadedFor = useRef<string | null>(null); // 같은 날짜를 다시 조회할 땐 화면을 로딩 상태로 바꾸지 않는다
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError("");
+    let cancelled = false; // 날짜를 빠르게 바꿀 때 늦게 도착한 이전 응답이 덮어쓰지 않게
+    const silent = loadedFor.current === asOf; // 자동 갱신: 깜빡이지 않고, 실패해도 기존 화면을 유지
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     listEquipment(asOf)
-      .then((data) => !cancelled && setItems(data))
-      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
+      .then((data) => {
+        if (cancelled) return;
+        setItems(data);
+        loadedFor.current = asOf;
+        setError("");
+      })
+      .catch((cause) => !cancelled && !silent && setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [asOf]);
+  }, [asOf, tick]);
 
   const okCount = items.filter((item) => item.status === "정상").length;
   const warnCount = items.filter((item) => item.status === "주의").length;
