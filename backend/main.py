@@ -16,7 +16,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .db import (
     DatabaseUnavailableError,
@@ -104,6 +104,25 @@ class ReportRequest(BaseModel):
             f"합계 {MAX_TOTAL_IMAGE_BYTES // (1024 * 1024)}MB. png·jpeg·webp만."
         ),
     )
+
+    @field_validator("date_from", "date_to")
+    @classmethod
+    def _validate_date_format(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        try:
+            parsed = date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("날짜는 YYYY-MM-DD 형식이어야 합니다.") from exc
+        if parsed.isoformat() != value:
+            raise ValueError("날짜는 YYYY-MM-DD 형식이어야 합니다.")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_date_range(self) -> "ReportRequest":
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("date_from은 date_to보다 늦을 수 없습니다.")
+        return self
 
     @field_validator("images")
     @classmethod

@@ -114,6 +114,47 @@ def test_report_contract(api, payload):
     }
 
 
+@pytest.mark.parametrize("field,value", [
+    ("date_from", "2026-99-99"),
+    ("date_to", "abc"),
+    ("date_from", "2026/09/20"),
+])
+def test_invalid_report_date_is_rejected_before_llm(api, field, value):
+    module, generator = api()
+    payload = {"line_id": "LINE-A", field: value}
+
+    with TestClient(module.app) as client:
+        response = client.post("/report", json=payload)
+
+    assert response.status_code == 422
+    assert "날짜는 YYYY-MM-DD 형식이어야 합니다." in response.json()["detail"][0]["msg"]
+    generator.assert_not_awaited()
+
+
+def test_report_date_range_is_rejected_before_llm(api):
+    module, generator = api()
+
+    with TestClient(module.app) as client:
+        response = client.post(
+            "/report",
+            json={"line_id": "LINE-A", "date_from": "2026-09-20", "date_to": "2026-09-10"},
+        )
+
+    assert response.status_code == 422
+    assert "date_from은 date_to보다 늦을 수 없습니다." in response.json()["detail"][0]["msg"]
+    generator.assert_not_awaited()
+
+
+def test_api_agent_uses_the_same_report_date_validation(api):
+    module, generator = api()
+
+    with TestClient(module.app) as client:
+        response = client.post("/api/agent", json={"line_id": "LINE-A", "date_to": "2026/09/20"})
+
+    assert response.status_code == 422
+    generator.assert_not_awaited()
+
+
 def test_report_analysis_infrastructure_failure_returns_503_without_report_id(api):
     module, generator = api()
     generator.side_effect = module.AnalysisInfrastructureError("분석 인프라에 연결할 수 없습니다")

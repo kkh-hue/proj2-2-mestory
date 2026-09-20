@@ -19,11 +19,15 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [unreadAlerts, setUnreadAlerts] = useState(0);
+  const [alertsError, setAlertsError] = useState(false);
 
   useEffect(() => {
     listAlerts()
-      .then((alerts) => setUnreadAlerts(alerts.filter((a) => a.unread).length))
-      .catch(() => setUnreadAlerts(0));
+      .then((alerts) => {
+        setUnreadAlerts(alerts.filter((a) => a.unread).length);
+        setAlertsError(false);
+      })
+      .catch(() => setAlertsError(true));
   }, []);
 
   // "/downtime"과 "/downtime/ai"처럼 경로가 겹칠 때, 더 길게(구체적으로) 일치하는
@@ -53,7 +57,11 @@ export default function Sidebar() {
                 <Link href={href} className={`sidebar-link${active ? " active" : ""}`}>
                   <Icon />
                   <span>{label}</span>
-                  {badge > 0 && <span className="sidebar-badge">{badge}</span>}
+                  {href === "/alerts" && alertsError ? (
+                    <span className="sidebar-badge" role="status" aria-label="알림을 불러오지 못했습니다" title="알림을 불러오지 못했습니다">!</span>
+                  ) : badge > 0 ? (
+                    <span className="sidebar-badge">{badge}</span>
+                  ) : null}
                 </Link>
               </li>
             );
