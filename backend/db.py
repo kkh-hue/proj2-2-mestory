@@ -704,6 +704,14 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
     window_start = day_end - timedelta(days=7)
     recent_start = day_end - timedelta(days=1)
 
+    # 알림도 설비현황과 같은 "현재 상태"를 기준으로 보여 준다. 상태 계산을 여기서
+    # 다시 구현하면 7일 가동률·정지 판정의 기준이 다시 어긋날 수 있으므로, 설비현황의
+    # 파생 결과를 그대로 사용한다.
+    equipment_status_by_id = {
+        item["equipment_id"]: item["status"]
+        for item in await list_equipment_status(as_of)
+    }
+
     try:
         async with await _connect() as conn:
             downtime_cur = await conn.execute(
@@ -711,15 +719,15 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
                 select d.log_id, d.equipment_id, d.line_id, d.error_code, d.start_time,
                        (d.end_time is null) as is_open,
                        (d.start_time >= %s) as is_recent,
-                       e.equipment_type, ec.description as error_description
+                       e.equipment_type, e.line_id as master_line_id,
+                       ec.description as error_description
                 from downtime_log d
                 left join equipment_master e on e.equipment_id = d.equipment_id
                 left join error_code_dict ec on ec.error_code = d.error_code
                 where d.start_time < %s and (d.end_time is null or d.start_time >= %s)
                 order by d.start_time desc
-                limit %s
                 """,
-                (recent_start, day_end, window_start, limit),
+                (recent_start, day_end, window_start),
             )
             downtime_rows = await downtime_cur.fetchall()
 
@@ -744,27 +752,43 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
         logger.warning("알림 목록 조회 실패: %s", exc)
         return []
 
-    alerts: list[dict] = []
+    downtime_alerts: list[dict] = []
     for (log_id, equipment_id, line_id, error_code, start_time, is_open, is_recent,
-         equipment_type, error_description) in downtime_rows:
+         equipment_type, master_line_id, error_description) in downtime_rows:
         # 분석이 끝난 설비의 원본 정지 알림은 숨긴다 — "분석 완료" 알림이 그 자리를 대신한다.
         # (진행 중인 정지는 분석 후에도 아직 끝나지 않았으므로 계속 보여 준다.)
         if not is_open and _already_analyzed(line_id, equipment_id, start_time.date(), analyzed_scopes):
             continue
+        equipment_status = equipment_status_by_id.get(equipment_id)
+        # 복구돼 정상인 설비의 과거 이벤트는 현재 알림 목록에서 제외한다. 마스터에
+        # 없는 설비는 설비현황과 비교할 수 없으므로 기존 이벤트 표기를 유지한다.
+        if equipment_status == "정상":
+            continue
+        if equipment_status is None:
+            tone = "critical" if is_open else "warning"
+            tag = "긴급" if is_open else "주의"
+        else:
+            tone = "critical" if equipment_status == "정지" else "warning"
+            tag = "긴급" if equipment_status == "정지" else "주의"
+        display_line_id = master_line_id or line_id
+        is_currently_stopped = equipment_status == "정지" if equipment_status is not None else is_open
         # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
         # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
         cause_note = f"{error_description or error_code} 관련 " if error_code else ""
-        alerts.append({
+        downtime_alerts.append({
             "id": f"downtime-{log_id}",
-            "tone": "critical" if is_open else "warning",
-            "tag": "긴급" if is_open else "주의",
-            "title": f"{_scope_name(line_id, equipment_id, equipment_type)} 정지 감지",
-            "description": f"{cause_note}다운타임이 {'진행 중입니다' if is_open else '있었습니다'}. 원인 분석이 필요합니다.",
-            "line_id": line_id,
+            "tone": tone,
+            "tag": tag,
+            "title": f"{_scope_name(display_line_id, equipment_id, equipment_type)} 정지 감지",
+            "description": f"{cause_note}다운타임이 {'진행 중입니다' if is_currently_stopped else '있었습니다'}. 원인 분석이 필요합니다.",
+            "line_id": display_line_id,
             "equipment_id": equipment_id,
             "date": start_time,
             "unread": bool(is_recent),
         })
+    # 정상 설비를 뺀 뒤에 제한해야 최신 정상 이벤트가 많아도 주의·정지 설비의
+    # 알림이 밀려나지 않는다. reports는 기존처럼 별도 limit 목록을 유지한다.
+    alerts: list[dict] = downtime_alerts[:limit]
     for report_id, equipment_id, line_id, recommended_action, created_at, is_recent, equipment_type, master_line in report_rows:
         # 화면으로 넘어갈 때 쓰는 값은 코드(LINE-E, EQ-057), 보이는 문장은 이름으로 만든다.
         scope_equipment = equipment_id if equipment_id and equipment_id.startswith("EQ-") else None
