@@ -56,6 +56,7 @@ from backend.services.llm import (  # noqa: E402
     FALLBACK_MESSAGE,
     generate_report,
     get_model_name,
+    last_agent_steps,
     last_infra_error,
 )
 from mcp_server.tools.data_loader import load_error_codes          # noqa: E402
@@ -189,7 +190,8 @@ def is_fallback(report) -> bool:
     return report.confidence_note == FALLBACK_MESSAGE
 
 
-def run_case(case: dict, with_image: bool, *, retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
+def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
+             retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
     """한 케이스를 돌린다. 폴백이 나오면 기다렸다 다시 시도한다.
 
     wait_sec 기본값이 130초인 이유: OpenRouter가 402(in_flight_budget_exhausted)와
@@ -199,6 +201,15 @@ def run_case(case: dict, with_image: bool, *, retries: int = RETRIES, wait_sec: 
     """
     kwargs = dict(case["request"])
     kwargs["images"] = [data_url(case["image"])] if with_image else None
+    # Langfuse에서 회차별로 묶어 보기 위한 값.
+    # 안 붙이면 모든 회차의 트레이스가 한 무더기로 섞여 "어느 회차 것인지" 알 수 없다.
+    # (실제로 179건이 그렇게 섞여 있었다)
+    # ⚠️ session_id가 아니라 trace_session_id다.
+    #    session_id를 주면 DB에서 대화 기록을 찾는데, Windows에서는
+    #    psycopg(Selector 루프)와 MCP 서브프로세스(Proactor 루프)가 충돌한다.
+    #    평가는 '트레이스를 회차별로 묶는 이름표'만 필요하다.
+    kwargs["trace_session_id"] = f"eval-{tag}{'' if with_image else '-noimg'}"
+    kwargs["user_id"] = "eval-runner"
 
     for attempt in range(retries + 1):
         t0 = time.perf_counter()
@@ -235,7 +246,7 @@ def do_run(tag: str, skip_control: bool) -> dict:
     unmeasured = []          # 인프라 오류로 끝내 못 잰 케이스 — 점수에서 제외한다
     degraded = []            # 축소 스키마로 떨어진 케이스 — 점수는 세되 표시한다
     for case in cases:
-        report, sec, failed_infra = run_case(case, with_image=True)
+        report, sec, failed_infra = run_case(case, with_image=True, tag=tag)
 
         if failed_infra:
             # ⚠️ 0점으로 세지 않는다. 모델이 틀린 게 아니라 측정을 못 한 것이다.
@@ -255,8 +266,12 @@ def do_run(tag: str, skip_control: bool) -> dict:
             continue
 
         latencies.append(sec)
+        steps = last_agent_steps()
         result = score_case(case, report, codes)
         result["elapsed_sec"] = round(sec, 2)
+        # 느린 케이스가 '모델이 느린 것'인지 '도구를 여러 번 왕복한 것'인지
+        # 나중에 가려내려면 횟수가 함께 남아야 한다.
+        result["tool_calls"] = steps
         scored.append(result)
         # 축소 스키마로 떨어졌으면 causes가 비어 있다 — 점수가 조용히 낮아진다.
         # 폴백(측정 불가)과 달리 '정상 응답'처럼 보이므로 따로 알린다.
@@ -267,13 +282,13 @@ def do_run(tag: str, skip_control: bool) -> dict:
 
         mark = "✅" if not result["failed"] else "❌"
         print(f"  {mark} {result['id']}  visual={result['axes']['visual_extraction']:.2f} "
-              f"contract={result['axes']['contract']:.2f}  {sec:.1f}s")
+              f"contract={result['axes']['contract']:.2f}  {sec:.1f}s  도구 {steps if steps is not None else '?'}회")
         for msg in result["failed"]:
             print(f"        └ {msg}")
 
         # 이미지 없이 같은 조건 — '이미지가 실제로 기여했다'는 증거 (S-2)
         if not skip_control and case["checks"]["used_image"]:
-            ctrl, csec, ctrl_infra = run_case(case, with_image=False)
+            ctrl, csec, ctrl_infra = run_case(case, with_image=False, tag=tag)
             if ctrl_infra:
                 # 대조군이 폴백이면 그 차이가 이미지 덕분인지 오류 탓인지 알 수 없다.
                 print(f"        ⚠️  {case['id']} 대조군 측정 불가 — 기여도 계산에서 제외")
@@ -334,6 +349,13 @@ def do_run(tag: str, skip_control: bool) -> dict:
               f"vs 없음 {c['visual_extraction']:.3f}  → 차이 {gap:+.3f}")
         print(f"  [게이트] 텍스트 p95 {c['p95']:.1f}s (목표 10s) / "
               f"이미지 p95 {summary['latency']['p95']:.1f}s (목표 20s)")
+    slow = sorted((r for r in summary["cases"]), key=lambda r: -r["elapsed_sec"])[:3]
+    if slow:
+        print("\n  [느린 케이스 3건]  지연 / 도구호출")
+        for r in slow:
+            print(f"    {r['id']}  {r['elapsed_sec']:5.1f}s  도구 {r.get('tool_calls', '?')}회")
+        print("    → 도구 횟수가 같은데 느리면 모델 지연, 많으면 왕복 때문이다.")
+
     print(f"\n  저장: evals/runs/{tag}.json")
     return summary
 
