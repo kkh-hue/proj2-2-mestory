@@ -76,7 +76,8 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     downtime_rows = [
         ("LOG-NORMAL", "EQ-001", "LINE-A", "E-101", start, False, True, "프레스", "LINE-A", "정상 설비 이벤트"),
         ("LOG-WARNING", "EQ-002", "LINE-LOG", "E-102", start, False, True, "프레스", "LINE-MASTER", "주의 설비 이벤트"),
-        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, False, True, "프레스", "LINE-A", "정지 설비 이벤트"),
+        ("LOG-STOPPED", "EQ-003", "LINE-A", "E-103", start, True, True, "프레스", "LINE-A", "정지 설비 이벤트"),
+        ("LOG-STOPPED-CLOSED", "EQ-003", "LINE-A", "E-104", start, False, True, "프레스", "LINE-A", "이미 끝난 이벤트"),
     ]
     report_rows = [
         ("report-1", "EQ-001", "LINE-A", "조치 확인", report_created, True, "프레스", "LINE-A"),
@@ -102,6 +103,9 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     assert "MASTER라인" in by_id["downtime-LOG-WARNING"]["title"]
     assert (by_id["downtime-LOG-STOPPED"]["tone"], by_id["downtime-LOG-STOPPED"]["tag"]) == ("critical", "긴급")
     assert "진행 중입니다" in by_id["downtime-LOG-STOPPED"]["description"]
+    # 설비가 정지여도 이미 끝난 행은 "진행 중"이 아니다 (태그는 설비 상태를 따른다)
+    assert by_id["downtime-LOG-STOPPED-CLOSED"]["tag"] == "긴급"
+    assert "있었습니다" in by_id["downtime-LOG-STOPPED-CLOSED"]["description"]
     assert (by_id["report-report-1"]["tone"], by_id["report-report-1"]["tag"]) == ("analysis", "분석 완료")
 
 

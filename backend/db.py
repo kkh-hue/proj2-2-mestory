@@ -775,7 +775,9 @@ async def list_alerts(limit: int = 30, as_of: date | None = None) -> list[dict]:
             tone = "critical" if equipment_status == "정지" else "warning"
             tag = "긴급" if equipment_status == "정지" else "주의"
         display_line_id = master_line_id or line_id
-        is_currently_stopped = equipment_status == "정지" if equipment_status is not None else is_open
+        # 문구는 설비 상태가 아니라 이 행 자신의 종료 여부로 정한다. 설비가 "정지"여도
+        # (예: 자정에 걸친 다른 다운타임 때문에) 이미 끝난 과거 행까지 "진행 중"이라고 하면 사실과 다르다.
+        is_currently_stopped = is_open
         # 코드(E-102)가 아니라 사람이 읽는 이름(예: 서보모터 과전류 트립)을 보여준다.
         # 사전에 없는 코드는 지어내지 않고 코드 그대로 둔다.
         cause_note = f"{error_description or error_code} 관련 " if error_code else ""
