@@ -23,3 +23,24 @@
 다만 **어떤 방식이고 그 방식의 한계가 무엇인지** 리포트에 적어야 합니다.
 
 > LLM-as-judge를 쓴다면 생성 모델과 판정 모델을 같은 것으로 두지 마세요. 후한 점수가 나옵니다.
+
+## 현재 구성 (9/20 기준)
+
+| 파일·폴더 | 내용 |
+|---|---|
+| `dataset.jsonl` | 텍스트 평가셋 **30건** — 각 행에 `input`(질문), `expected`(기대 답), `note`(케이스 종류), `why`(정답 근거) |
+| `dataset_multimodal.jsonl` | 이미지 첨부 평가셋 **10건** (`MM-01`~) — `image`, `request`, `input`, `expected`, `note`, `why` |
+| `images/` | 멀티모달 평가에 쓰는 HMI 알람 화면 이미지 (정상·경계·실패 유도) |
+| `runs/` | 회차별 측정 기록(`before.json`, `after*.json`, `gpt5mini.json`, `noise*.json` 등) — 개선 전후·모델 교체·재측정 비교용 |
+
+멀티모달 평가셋과 이미지는 손으로 만들지 않고 스크립트로 생성·채점합니다(정답이 이미지에 실제로 적힌 값과 어긋나지 않게).
+
+```bash
+python scripts/make_hmi_images.py         # 평가용 HMI 이미지 생성
+python scripts/make_multimodal_evalset.py # dataset_multimodal.jsonl 생성
+python scripts/score_multimodal.py --tag <회차명>          # 축별 점수 측정 (runs/에 기록)
+python scripts/score_multimodal.py --compare <회차A> <회차B> # 회차 비교
+```
+
+- 측정은 **두 번 이상** 재서 회차 간 차이를 봅니다. 같은 조건에서도 점수가 달라질 수 있어(노이즈) 보고서에는 한 번의 값이 아니라 범위로 적습니다.
+- 점수·개선 전후 해석은 루트의 [EVAL_REPORT.md](../EVAL_REPORT.md)에 정리합니다.

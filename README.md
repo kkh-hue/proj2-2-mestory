@@ -4,11 +4,29 @@
 
 ## 🚀 배포 (Railway)
 
-- **프론트엔드**: https://mestory-app.up.railway.app — 전 화면이 백엔드 API에 연동돼 있습니다: `/` 대시보드(`GET /dashboard`) · `/downtime` 다운타임 분석(`GET /downtime/analysis`) · `/downtime/ai` AI 원인 분석 대화형 화면(`POST /report`, 이미지 첨부 가능) · `/downtime/report` 분석 실행(`POST /report`) · `/reports` 리포트 목록·상세 · `/equipment` 설비 현황 · `/alerts` 알림. 대시보드·분석·알림·설비 화면의 값은 `downtime_log`·`reports`에서 집계한 실데이터입니다.
+- **프론트엔드**: https://mestory-app.up.railway.app — 모든 화면이 실제 백엔드·Postgres에 연결돼 있습니다 (목업 없음)
+
+  | 경로 | 화면 | 데이터 |
+  | --- | --- | --- |
+  | `/` | 대시보드 | `GET /dashboard` |
+  | `/downtime` | 다운타임 분석 (기간·라인·설비·상태 필터) | `GET /downtime/analysis` |
+  | `/downtime/ai` | AI 원인 분석 (대화형, 세션 목록, 이미지 첨부) | `POST /report`, `GET /chat/*` |
+  | `/downtime/report` | 조건을 지정해 리포트 생성 | `POST /report` |
+  | `/reports`, `/reports/[id]` | 리포트 목록·상세 (CSV 다운로드, PDF 저장) | `GET /reports`, `GET /reports/{id}` |
+  | `/equipment` | 설비 현황 (정상·주의·정지, 정지 원인·종료 예정 시각) | `GET /equipment` |
+  | `/alerts` | 알림센터 | `GET /alerts` |
+
+  대시보드·설비 현황·알림센터·AI 원인 분석은 상단 날짜를 고를 수 있습니다. **오늘**은 현재 시각(KST) 기준으로 계산하고 1분마다 자동 갱신하며, **지난 날짜**는 그날 자정 시점 기준입니다.
 - **백엔드 API**: https://mestory.up.railway.app
-  - **헬스체크**: `GET /health` → `{"status":"ok"}`
-  - **리포트 생성**: `POST /report`
-  - **그 외 조회 API**: `GET /chat/sessions` · `GET /chat/{session_id}` · `GET /reports` · `GET /reports/{report_id}` · `GET /dashboard` · `GET /downtime/analysis` · `GET /alerts` · `GET /equipment`
+
+  | 엔드포인트 | 설명 |
+  | --- | --- |
+  | `GET /health` | 헬스체크 → `{"status":"ok"}` |
+  | `POST /report` (`/api/agent`도 동일) | 리포트 생성 (요청에 `message`·`session_id`·`images`를 줄 수 있음) |
+  | `GET /chat/sessions`, `GET /chat/{session_id}` | AI 원인 분석 세션 목록·대화 기록 |
+  | `GET /reports`, `GET /reports/{report_id}` | 리포트 목록·상세 |
+  | `GET /dashboard`, `GET /alerts`, `GET /equipment` | 화면용 집계 (`as_of=YYYY-MM-DD` 선택) |
+  | `GET /downtime/analysis` | 다운타임 분석 집계 |
 
 ```bash
 curl https://mestory.up.railway.app/health
@@ -18,11 +36,14 @@ curl -X POST https://mestory.up.railway.app/report \
   -d '{"line_id":"LINE-A","equipment_id":"EQ-004","date_from":"2026-01-03","date_to":"2026-01-03"}'
 ```
 
+배포는 Railway CLI로 합니다 — **백엔드는 저장소 루트에서, 프론트엔드는 `frontend/`에서** 올려야 합니다(반대로 올리면 다른 앱이 서비스에 올라갑니다).
+
 ## 🤖 LLM 출력 계약 (필수 조건 3)
 
-`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유, 기본 모델 `openai/gpt-5-mini`) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 실패하면 3단계로 재시도합니다(1차 생성 → 프롬프트 재시도 → 축소 스키마 재시도). **모두 실패하면 고정 안전 응답으로 덮지 않고 분석 예외를 던지며, `POST /report`는 HTTP 503을 반환합니다.** 사용자가 준 조건(`equipment_id`·`line_id`·`period`)과 `used_image`는 LLM 출력을 믿지 않고 코드가 덮어씁니다.
+`backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 최대 3단계로 시도합니다(① 기본 스키마 → ② 프롬프트를 보강해 같은 스키마로 재시도 → ③ 축소 스키마로 재시도). **3단계가 모두 실패하면 빈 리포트로 감추지 않고 HTTP 503을 반환**하며 리포트·ID를 저장하지 않습니다. 사용자가 준 조건(`equipment_id`·`line_id`·`period`)과 `used_image`는 LLM 출력을 믿지 않고 코드가 덮어씁니다.
 
-- 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`, `_run_agent_json()` 안의 `executor.ainvoke(...)`, 재시도 사다리 `_generate_with_retries()`
+- 호출 지점: [backend/services/llm.py](./backend/services/llm.py) — `_build_llm()`, `_generate_with_retries()`, `generate_report()`
+- **모델**: `MESTORY_LLM_MODEL`로 정합니다(코드 기본값은 `openai/gpt-4o-mini`, `.env.example`·배포는 `openai/gpt-5-mini`). 교육과정 보안 정책상 ZDR을 끌 수 없어 모델에 따라 OpenRouter가 404를 낼 수 있으니, 모델을 바꾸기 전에 `python scripts/check_zdr.py`로 확인하세요([AGENTS.md](./AGENTS.md) "알려진 문제" 참고).
 - **실제 호출 검증**: 위 배포 URL의 `/report`를 직접 호출하면 실제 LLM이 생성한 원인 분석 리포트가 반환됩니다 (Postgres 실데이터 기반). Langfuse에도 트레이스(입력/출력/비용/지연)가 남습니다.
 - 상세 테스트 로그·발견한 버그·수정 내역: [backend/README.md](./backend/README.md) 5~7번 항목 참고
 
@@ -85,12 +106,14 @@ git switch main && git pull
 git switch -c feat/login-api
 
 # 2. 작업 후 커밋·push
-git add .
+git add <바꾼 파일들>          # git add . 는 쓰지 않습니다 (아래 참고)
 git commit -m "feat: 로그인 API 구현"
 git push -u origin feat/login-api
 
 # 3. GitHub에서 PR 생성 → 조원 리뷰 → approve 후 merge
 ```
+
+> **`git add .` 금지**: 저장소에 줄바꿈 규칙(`.gitattributes`)이 없어 파일을 저장만 해도 수정된 것처럼 보입니다. 파일명을 지정해서 add 하고, `git diff --ignore-all-space --stat`이 비어 있으면 실제 변경은 없는 겁니다.
 
 ## 충돌(conflict)이 났을 때
 
@@ -101,7 +124,7 @@ git switch main && git pull          # 최신 main 받기
 git switch feat/내브랜치
 git merge main                       # 충돌 발생 지점이 파일에 표시됨
 # 파일 열어 <<<<<<< ======= >>>>>>> 사이에서 남길 내용 선택 후 저장
-git add . && git commit              # 충돌 해결 커밋
+git add <해결한 파일> && git commit   # 충돌 해결 커밋
 git push                             # PR이 자동 갱신됨
 ```
 
@@ -111,46 +134,50 @@ git push                             # PR이 자동 갱신됨
 
 ```
 backend/                  FastAPI 백엔드
-├── main.py                 진입점 — /health · POST /report(=/api/agent) · 대화·리포트·대시보드·분석·알림·설비 조회 API
-├── db.py                   Postgres 저장·집계 (reports·chat_messages, 대시보드·알림·설비 집계)
-├── analysis.py             다운타임 분석 화면(GET /downtime/analysis)의 집계 로직 (순수 함수)
-├── scope.py                조회 범위(라인·설비) 확정 — resolve_scope()
-├── services/llm.py         LLM 호출 단일 창구 — 출력 계약 검증·3단계 재시도·실패 시 예외·Langfuse 트레이스
+├── main.py                 라우트 (/health, /report, /chat/*, /reports, /dashboard, /downtime/analysis, /alerts, /equipment)
+├── services/llm.py         LLM 호출 단일 창구 — 출력 계약 검증·재시도·Langfuse 트레이스·이미지 입력
+├── db.py                   Postgres 접근 (리포트·대화 저장, 대시보드/알림/설비 집계)
+├── scope.py                질문·요청에서 조회 범위(라인·설비) 확정
+├── analysis.py             다운타임 분석 집계 (DB와 분리한 순수 함수)
 └── README.md                진행상황
 
-mcp_server/                MCP 서버
-├── server.py                FastMCP 진입점 (도구 3개: get_downtime_logs · get_error_code_info · get_maintenance_history)
+mcp_server/                MCP 서버 (stdio)
+├── server.py                FastMCP 진입점 — 도구 3개(get_downtime_logs·get_error_code_info·get_maintenance_history) 등록
 ├── tools/
-│   ├── data_loader.py        CSV/DB 데이터 로딩 (MESTORY_DATA_SOURCE로 전환)
-│   ├── downtime.py           조건별 정지 기록 조회 (계획정지·미등록 코드 등 주의 딱지 부여)
-│   ├── error_codes.py        에러코드 사전 조회 (미등록 코드는 found:false)
-│   └── maintenance.py        설비별 정비이력 조회
+│   ├── data_loader.py        CSV 또는 Postgres에서 표 읽기 (MESTORY_DATA_SOURCE로 전환)
+│   ├── downtime.py           조건별 정지 기록 조회·요약
+│   ├── error_codes.py        에러코드 사전 조회
+│   └── maintenance.py        정비이력 조회
 └── README.md                 진행상황
 
-frontend/                  Next.js — 전 화면 백엔드 API 연동
-├── app/                     페이지 — /(대시보드) /downtime(다운타임 분석) /downtime/ai(AI 원인 분석 대화) /downtime/report(분석 실행) /reports(+/[id]) /equipment /alerts
-├── components/              화면 컴포넌트 (Sidebar·Topbar·KpiCard·TrendChart·ChatWindow·ChatInput·ReportCard·CauseList·EquipmentBoard·AlertBoard 등)
-├── lib/                     api.ts(backend 호출 단일 창구) · labels.ts · date.ts · reportCsv.ts · useLiveTick.ts · useNowTick.ts
-├── types/                   backend 응답과 1:1 매칭되는 타입 (report.ts · dashboard.ts · downtimeAnalysis.ts · alert.ts · equipment.ts)
+frontend/                  Next.js 14 — 대시보드·다운타임 분석·AI 원인 분석·리포트·설비 현황·알림센터
+├── app/                     페이지 (위 표 참고)
+├── components/              화면 조각 (Sidebar·Topbar·KpiCard·EquipmentCard·AlertBoard·CauseBreakdown 등)
+├── lib/                     api.ts(백엔드 호출 단일 창구)·date.ts·labels.ts·reportCsv.ts·useLiveTick.ts·useNowTick.ts
+├── types/                   백엔드 응답과 1:1로 맞춘 타입 (report·dashboard·equipment·alert·downtimeAnalysis)
 └── README.md                진행상황
 
 skills/SKILL.md            도메인 지식·판단 기준 (설비 다운타임 원인 분석) — 프롬프트에 통째로 주입
-evals/                      평가셋 (dataset.jsonl 30건 · dataset_multimodal.jsonl 10건) + runs/ 측정 기록
+tests/                     pytest — Spec의 AC와 1:1 (데이터가 없으면 일부 skip)
+scripts/                   seed_db.py(CSV→Postgres) · check_zdr.py(모델 ZDR 진단) · 멀티모달 평가셋 생성·채점
+evals/                      평가셋 (dataset.jsonl 30건, dataset_multimodal.jsonl 10건) · runs/(측정 기록)
 EVAL_REPORT.md              개선 전후 지표
 tests/                      pytest — docs/specs의 AC와 1:1
 scripts/                    seed_db.py(CSV→Postgres) · check_zdr.py · 멀티모달 평가셋 생성·채점 스크립트
 
+data/                       CSV 4개 — .gitignore 대상이라 저장소에 없음 (docs/에 원본 CSV 사본이 있음)
+
 docs/
 ├── MESTORY_PRD.md            제품 요구사항 문서
 ├── MESTORY_기능목록.md       기능 목록 (P0/P1, 범위 밖)
-├── MESTORY_문제정의서.docx   문제 정의서
+├── MESTORY_문제정의서.docx    문제 정의서
 ├── MESTORY_팀착수체크리스트.docx / MESTORY_평가질문_계획보완10_신규20.xlsx   착수·평가 보조 자료
 ├── SCAFFOLD.md               초기 스캐폴딩 안내
-├── *.csv                     시뮬레이션 데이터 (downtime_log · equipment_master · error_code_dict · maintenance_history)
+├── *.csv                     시뮬레이션 데이터 원본 (downtime_log·equipment_master·error_code_dict·maintenance_history)
 ├── images/                   MCP Inspector 캡처
 └── specs/                    기능별 Spec 문서 (`_example.md` 형식)
 
-docker-compose.yml / Dockerfile   api+db 실행 (알려진 문제는 AGENTS.md 참고)
+docker-compose.yml / Dockerfile   `docker compose up`으로 api+db 실행 (프론트엔드는 포함하지 않음 — Railway에 별도 배포, 알려진 문제는 AGENTS.md 참고)
 AGENTS.md / CLAUDE.md       AI 에이전트(Claude Code·Codex 등) 공통 작업 지침
 ```
 
