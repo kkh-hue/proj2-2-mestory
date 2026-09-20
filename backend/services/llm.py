@@ -516,6 +516,19 @@ def _extract_json(text: str) -> dict:
         return repaired
 
 
+# 마지막 리포트 생성에서 에이전트가 도구를 몇 번 불렀는지.
+# 왜 남기나: 같은 입력인데 응답이 8초 걸릴 때와 29초 걸릴 때가 있었다.
+#   모델이 느린 건지, 도구를 여러 번 왕복한 건지 구분하려면 이 횟수가 필요하다.
+#   (Langfuse 트레이스로도 보이지만, 평가 스크립트가 케이스마다 바로 찍으려면
+#    코드에서 꺼낼 수 있어야 한다)
+_LAST_AGENT_STEPS: int | None = None
+
+
+def last_agent_steps() -> int | None:
+    """마지막 실행의 도구 호출 횟수. 폴백이면 None일 수 있다."""
+    return _LAST_AGENT_STEPS
+
+
 async def _run_agent_json(
     tools: list,
     llm: ChatOpenAI,
@@ -532,6 +545,7 @@ async def _run_agent_json(
         tools=tools,
         max_iterations=AGENT_MAX_ITERATIONS,
         handle_parsing_errors=True,
+        return_intermediate_steps=True,   # 도구 호출 횟수를 세기 위해
     )
 #   LLM 호출 지점 — OpenRouter의 OpenAI 호환 API를 LangChain ChatOpenAI 로 호출한다.
 # (에이전트가 MCP 도구를 고르고, 최종 응답을 여기서 받는다)
@@ -540,6 +554,8 @@ async def _run_agent_json(
         {"input": user_messages, "chat_history": chat_history},
         config=run_config,
     )
+    global _LAST_AGENT_STEPS
+    _LAST_AGENT_STEPS = len(result.get("intermediate_steps") or [])
     return _extract_json(result["output"])
 
 

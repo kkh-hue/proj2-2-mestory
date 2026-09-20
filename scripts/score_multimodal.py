@@ -56,6 +56,7 @@ from backend.services.llm import (  # noqa: E402
     FALLBACK_MESSAGE,
     generate_report,
     get_model_name,
+    last_agent_steps,
     last_infra_error,
 )
 from mcp_server.tools.data_loader import load_error_codes          # noqa: E402
@@ -265,8 +266,12 @@ def do_run(tag: str, skip_control: bool) -> dict:
             continue
 
         latencies.append(sec)
+        steps = last_agent_steps()
         result = score_case(case, report, codes)
         result["elapsed_sec"] = round(sec, 2)
+        # 느린 케이스가 '모델이 느린 것'인지 '도구를 여러 번 왕복한 것'인지
+        # 나중에 가려내려면 횟수가 함께 남아야 한다.
+        result["tool_calls"] = steps
         scored.append(result)
         # 축소 스키마로 떨어졌으면 causes가 비어 있다 — 점수가 조용히 낮아진다.
         # 폴백(측정 불가)과 달리 '정상 응답'처럼 보이므로 따로 알린다.
@@ -277,7 +282,7 @@ def do_run(tag: str, skip_control: bool) -> dict:
 
         mark = "✅" if not result["failed"] else "❌"
         print(f"  {mark} {result['id']}  visual={result['axes']['visual_extraction']:.2f} "
-              f"contract={result['axes']['contract']:.2f}  {sec:.1f}s")
+              f"contract={result['axes']['contract']:.2f}  {sec:.1f}s  도구 {steps if steps is not None else '?'}회")
         for msg in result["failed"]:
             print(f"        └ {msg}")
 
@@ -344,6 +349,13 @@ def do_run(tag: str, skip_control: bool) -> dict:
               f"vs 없음 {c['visual_extraction']:.3f}  → 차이 {gap:+.3f}")
         print(f"  [게이트] 텍스트 p95 {c['p95']:.1f}s (목표 10s) / "
               f"이미지 p95 {summary['latency']['p95']:.1f}s (목표 20s)")
+    slow = sorted((r for r in summary["cases"]), key=lambda r: -r["elapsed_sec"])[:3]
+    if slow:
+        print("\n  [느린 케이스 3건]  지연 / 도구호출")
+        for r in slow:
+            print(f"    {r['id']}  {r['elapsed_sec']:5.1f}s  도구 {r.get('tool_calls', '?')}회")
+        print("    → 도구 횟수가 같은데 느리면 모델 지연, 많으면 왕복 때문이다.")
+
     print(f"\n  저장: evals/runs/{tag}.json")
     return summary
 
