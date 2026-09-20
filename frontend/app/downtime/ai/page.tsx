@@ -405,6 +405,20 @@ export default function AiAnalysisChatPage() {
                       <p className="ai-answer-headline">{turn.content}</p>
                       {turn.report && (
                         <dl className="ai-answer-details">
+                          {/* 이미지를 올린 사람이 가장 먼저 확인하려는 값이라 맨 앞에 둔다.
+                              읽어낸 것이 없으면 빈 칸을 남기지 않고 행 자체를 그리지 않는다. */}
+                          {turn.report.used_image && turn.report.visual_findings && turn.report.visual_findings.length > 0 && (
+                            <div className="ai-answer-row">
+                              <dt>이미지에서 확인한 것</dt>
+                              <dd>
+                                <ul className="ai-visual-findings">
+                                  {turn.report.visual_findings.map((finding, findingIndex) => (
+                                    <li key={findingIndex}>{finding}</li>
+                                  ))}
+                                </ul>
+                              </dd>
+                            </div>
+                          )}
                           <div className="ai-answer-row">
                             <dt>기간</dt>
                             <dd>{turn.report.period}</dd>
