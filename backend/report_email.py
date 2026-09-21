@@ -10,6 +10,8 @@ import os
 from html import escape
 from typing import Any
 
+import httpx
+
 # 환경변수 이름을 상수로 둔다 — 오타가 나면 조용히 "설정 없음"으로 동작해 버리기 때문이다.
 ALLOWLIST_ENV = "REPORT_EMAIL_ALLOWLIST"
 
@@ -198,3 +200,75 @@ def render_report_email(report: dict, base_url: str) -> tuple[str, str]:
     text_body = "\n".join(lines)
 
     return html_body, text_body
+
+
+# ─────────────────────────────────────────────
+# (3) 실제 발송 — Resend HTTPS API
+#
+# 이 함수만 따로 둔 이유: 시험에서 여기만 가짜로 바꿔 끼우면 실제 메일을 보내지 않고도
+# "몇 번 불렸는지"를 셀 수 있다(Spec AC-01·AC-02). 권한 판단은 여기서 하지 않는다.
+#
+# SMTP가 아니라 HTTPS API를 쓰는 이유: Railway Hobby 플랜이 25·465·587 포트를 막는다.
+# ─────────────────────────────────────────────
+
+RESEND_API_URL = "https://api.resend.com/emails"
+API_KEY_ENV = "RESEND_API_KEY"
+FROM_ENV = "REPORT_EMAIL_FROM"
+
+# 메일 발송이 끝나지 않으면 요청이 계속 매달린다. 넉넉하되 한계는 둔다.
+SEND_TIMEOUT_SECONDS = 15
+
+
+class ReportEmailError(RuntimeError):
+    """메일을 보내지 못했다. 라우터가 이걸 잡아 502로 바꾼다.
+
+    설정 누락과 발송 실패를 같은 예외로 묶은 이유:
+      둘 다 "우리 쪽에서 메일을 못 보냈다"는 같은 결과이고, 호출자가 할 수 있는 일도 같다.
+      구분이 필요하면 메시지로 알 수 있다.
+    """
+
+
+async def send_email(to: str, subject: str, html: str, text: str) -> None:
+    """Resend API로 메일 한 통을 보낸다. 실패하면 ReportEmailError를 던진다.
+
+    async인 이유:
+      FastAPI 라우터가 async인데 그 안에서 블로킹 HTTP 호출을 하면, 메일을 보내는 몇 초 동안
+      서버가 다른 요청을 받지 못한다.
+
+    키를 시작 시점이 아니라 여기서 확인하는 이유:
+      설정이 없다고 서버가 아예 안 뜨면, 메일 기능과 무관한 다른 화면까지 못 쓴다.
+      메일을 보내려 할 때만 막는다.
+    """
+    api_key = os.getenv(API_KEY_ENV, "").strip()
+    if not api_key:
+        raise ReportEmailError(f"{API_KEY_ENV}가 설정되지 않았습니다")
+
+    sender = os.getenv(FROM_ENV, "").strip()
+    if not sender:
+        raise ReportEmailError(f"{FROM_ENV}가 설정되지 않았습니다")
+
+    payload = {
+        "from": sender,
+        "to": [to],          # 문자열도 받지만 목록으로 통일한다 — 나중에 여러 명 보낼 때 모양이 안 바뀐다
+        "subject": subject,
+        "html": html,
+        "text": text,        # HTML을 못 보는 메일 앱을 위한 대체본
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=SEND_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                RESEND_API_URL,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        # 연결 실패·시간 초과 등. 원래 예외는 from으로 달아 두어 로그에서 추적할 수 있게 한다.
+        raise ReportEmailError(f"메일 발송 서버에 연결하지 못했습니다: {exc}") from exc
+
+    if response.status_code >= 400:
+        # 응답 본문을 붙이되 길이를 자른다. 그대로 두면 로그가 뒤덮인다.
+        # API 키는 요청 헤더에만 있고 응답에는 없으므로 여기 실려 나갈 일은 없다.
+        raise ReportEmailError(
+            f"메일 발송이 거절되었습니다 (HTTP {response.status_code}): {response.text[:300]}"
+        )

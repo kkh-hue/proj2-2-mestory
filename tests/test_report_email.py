@@ -245,3 +245,164 @@ def test_권장조치가_비어도_깨지지_않는다():
 
     assert "권장 조치" in html
     assert "분석 참고 사항" in text
+
+
+# ─────────────────────────────────────────────
+# (3) send_email — Resend API 호출
+#
+# 실제 메일은 보내지 않는다. httpx.AsyncClient.post를 가짜로 바꿔 끼워
+# "무엇을 어디로 보내려 했는지"만 들여다본다.
+# ─────────────────────────────────────────────
+import asyncio  # noqa: E402
+
+import httpx  # noqa: E402
+
+from backend import report_email  # noqa: E402
+from backend.report_email import ReportEmailError, send_email  # noqa: E402
+
+
+class FakeResponse:
+    def __init__(self, status_code: int, text: str = ""):
+        self.status_code = status_code
+        self.text = text
+
+
+class FakeClient:
+    """httpx.AsyncClient 대신 끼워 넣는 가짜. 보낸 내용을 모아 둔다."""
+
+    def __init__(self, response=None, raise_error=None):
+        self.calls = []
+        self._response = response or FakeResponse(200, '{"id":"abc"}')
+        self._raise_error = raise_error
+
+    def __call__(self, *args, **kwargs):      # AsyncClient(timeout=...) 호출을 받는다
+        self.init_kwargs = kwargs
+        return self
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_):
+        return False
+
+    async def post(self, url, headers=None, json=None):
+        self.calls.append({"url": url, "headers": headers, "json": json})
+        if self._raise_error:
+            raise self._raise_error
+        return self._response
+
+
+@pytest.fixture
+def send_env(monkeypatch):
+    """발송에 필요한 환경변수를 채워 둔다."""
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.setenv("REPORT_EMAIL_FROM", "MESTORY <no-reply@example.com>")
+    return monkeypatch
+
+
+def run_send(**kwargs):
+    return asyncio.run(send_email(
+        to=kwargs.get("to", "ok@example.com"),
+        subject=kwargs.get("subject", "제목"),
+        html=kwargs.get("html", "<p>본문</p>"),
+        text=kwargs.get("text", "본문"),
+    ))
+
+
+def test_올바른_주소와_헤더로_한_번_호출한다(send_env):
+    fake = FakeClient()
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    run_send()
+
+    assert len(fake.calls) == 1
+    call = fake.calls[0]
+    assert call["url"] == "https://api.resend.com/emails"
+    assert call["headers"]["Authorization"] == "Bearer re_test_key"
+
+
+def test_보내는_내용이_그대로_실린다(send_env):
+    fake = FakeClient()
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    run_send(to="ok@example.com", subject="정지 리포트", html="<b>표</b>", text="표")
+
+    body = fake.calls[0]["json"]
+    assert body["from"] == "MESTORY <no-reply@example.com>"
+    assert body["to"] == ["ok@example.com"]      # 문자열이 아니라 목록으로 보낸다
+    assert body["subject"] == "정지 리포트"
+    assert body["html"] == "<b>표</b>"
+    assert body["text"] == "표"                   # HTML을 못 보는 앱을 위한 대체본
+
+
+def test_시간_제한을_걸고_호출한다(send_env):
+    fake = FakeClient()
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    run_send()
+
+    # 응답이 안 오면 요청이 계속 매달린다 — 한계를 둔 것을 확인한다
+    assert fake.init_kwargs.get("timeout") == report_email.SEND_TIMEOUT_SECONDS
+
+
+# ── 설정이 빠졌을 때 ──
+def test_API_키가_없으면_보내지_않고_예외를_던진다(monkeypatch):
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.setenv("REPORT_EMAIL_FROM", "a@b.com")
+    fake = FakeClient()
+    monkeypatch.setattr(httpx, "AsyncClient", fake)
+
+    with pytest.raises(ReportEmailError) as caught:
+        run_send()
+
+    assert "RESEND_API_KEY" in str(caught.value)
+    assert fake.calls == []                       # 호출 자체를 하지 않는다
+
+
+def test_보내는_사람이_없으면_보내지_않고_예외를_던진다(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_test_key")
+    monkeypatch.delenv("REPORT_EMAIL_FROM", raising=False)
+    fake = FakeClient()
+    monkeypatch.setattr(httpx, "AsyncClient", fake)
+
+    with pytest.raises(ReportEmailError) as caught:
+        run_send()
+
+    assert "REPORT_EMAIL_FROM" in str(caught.value)
+    assert fake.calls == []
+
+
+# ── 발송이 실패했을 때 ──
+@pytest.mark.parametrize("status", [400, 401, 422, 429, 500, 503])
+def test_오류_응답이면_예외를_던진다(send_env, status):
+    fake = FakeClient(response=FakeResponse(status, '{"message":"invalid"}'))
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    with pytest.raises(ReportEmailError) as caught:
+        run_send()
+
+    assert str(status) in str(caught.value)
+
+
+def test_연결에_실패하면_예외를_던진다(send_env):
+    fake = FakeClient(raise_error=httpx.ConnectError("연결 실패"))
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    # httpx 예외가 그대로 새면 라우터가 500을 내고 원인을 알기 어렵다 — 우리 예외로 감싼다
+    with pytest.raises(ReportEmailError):
+        run_send()
+
+
+def test_시간_초과도_같은_예외로_감싼다(send_env):
+    fake = FakeClient(raise_error=httpx.ReadTimeout("시간 초과"))
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    with pytest.raises(ReportEmailError):
+        run_send()
+
+
+def test_200이면_조용히_끝난다(send_env):
+    fake = FakeClient(response=FakeResponse(200, '{"id":"abc"}'))
+    send_env.setattr(httpx, "AsyncClient", fake)
+
+    assert run_send() is None                      # 반환값 없음 = 성공
