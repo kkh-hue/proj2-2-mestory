@@ -1,5 +1,6 @@
 import { IconAlertCircle, IconLayers } from "./icons";
 import type { DowntimeCause } from "../types/report";
+import TruncatedTextPopover from "./TruncatedTextPopover";
 
 const SEVERITY_METER: Record<DowntimeCause["severity"], { width: number; tier: "critical" | "warning" | "ok" | "unknown" }> = {
   "중대": { width: 90, tier: "critical" },
@@ -36,7 +37,7 @@ export default function CauseBreakdown({ causes }: { causes: DowntimeCause[] }) 
                       보이므로(globals.css의 .breakdown-desc) 전체는 마우스를 올려 본다. */}
                   <div className="breakdown-top">
                     <span className="breakdown-code" title={cause.error_code}>{cause.error_code}</span>
-                    <span className="breakdown-desc" title={cause.description}>{cause.description}</span>
+                    <TruncatedTextPopover className="breakdown-desc" text={cause.description} />
                   </div>
                   <span className="breakdown-meter-track">
                     <span className={`breakdown-meter-fill meter-${meter.tier}`} style={{ width: `${meter.width}%` }} />
