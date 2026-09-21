@@ -23,10 +23,17 @@ from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
-# 가로·세로 중 긴 쪽을 이 픽셀에 맞춘다(비율 유지). 말풍선 썸네일은 이 정도면 충분하다.
-THUMBNAIL_MAX_PX = 512
-# JPEG 품질. 70이면 눈으로 보기에 무리 없으면서 용량이 크게 준다.
-THUMBNAIL_QUALITY = 70
+# 가로·세로 중 긴 쪽을 이 픽셀에 맞춘다(비율 유지).
+#
+# 왜 1024인가 (처음엔 512였다):
+#   512로 줄였더니 첨부한 HMI 화면의 글씨를 읽을 수 없어, 어떤 사진이었는지 알아볼 수 없었다.
+#   사진을 남기는 목적이 "그 분석이 무엇을 보고 나온 것인지 확인하는 것"이라 판독이 안 되면
+#   저장하는 의미가 없다. HMI 화면 사진은 보통 1000px 안팎이라 1024면 원본 그대로 남는다.
+THUMBNAIL_MAX_PX = 1024
+# JPEG 품질. 해상도를 올린 만큼 품질을 낮춰 용량을 맞췄다.
+#   실측(4000x3000 노이즈 사진 = 최악 조건): 1024/70 → 291KB, 1024/60 → 227KB
+#   실제 HMI 화면 사진은 같은 설정에서 31KB다. 노이즈가 적어 JPEG가 잘 줄어든다.
+THUMBNAIL_QUALITY = 60
 
 # "data:image/png;base64,iVBOR..." 를 (형식, 내용) 두 조각으로 나눈다 (main.py와 같은 모양).
 _DATA_URL_RE = re.compile(r"^data:image/([A-Za-z0-9.+\-]+);base64,(.+)$", re.DOTALL)
