@@ -113,6 +113,8 @@ def test_report_contract(api, payload):
     # 응답 헤더(X-Report-Id)로 프론트에 그대로 전달됐는지를 대신 확인한다.
     report_id = call_kwargs.pop("report_id")
     assert response.headers["x-report-id"] == report_id
+    # user_id는 요청 본문이 아니라 서버가 정하는 값이라 payload에서 올 수 없다 — 따로 꺼내 확인한다.
+    assert call_kwargs.pop("user_id") == "web"
     assert call_kwargs == {
         field: payload.get(field)
         for field in ("line_id", "equipment_id", "date_from", "date_to", "session_id", "images", "message")
@@ -325,3 +327,27 @@ def test_report_scope_ac10_범위가_전혀_없으면_message가_없어도_422(a
     assert response.status_code == 422
     assert "설비" in response.json()["detail"]
     generator.assert_not_awaited()
+
+
+# ── Langfuse 요청 출처 (docs/specs/langfuse-user-id.md) ──
+# 서비스 요청은 경로(/report·/api/agent)나 세션 유무와 상관없이 user_id="web"으로 넘어가야
+# Langfuse Users 탭에서 평가(eval-runner)와 실제 사용이 갈린다.
+@pytest.mark.parametrize("path,session_id", [
+    ("/report", "session-1"),   # AC-01 · 서비스 요청은 user_id="web"으로 넘어간다
+    ("/api/agent", None),       # AC-02 · session_id가 없어도 user_id는 붙는다
+])
+def test_langfuse_user_id_서비스_요청은_web으로_넘어간다(api, path, session_id):
+    module, generator = api()
+    generator.side_effect = None
+    generator.return_value = module.DowntimeReport(
+        equipment_id="EQ-004", line_id="LINE-A", period="2026-01-03 ~ 2026-01-03", causes=[],
+        unclassified_count=0, confidence_note="", recommended_action="",
+    )
+    payload = {"line_id": "LINE-A", "equipment_id": "EQ-004", "date_from": "2026-01-03", "date_to": "2026-01-03"}
+    if session_id:  # AC-02는 session_id 키 자체를 빼서 "세션 없이 호출"을 그대로 재현한다
+        payload["session_id"] = session_id
+    with TestClient(module.app) as client:
+        response = client.post(path, json=payload)
+    assert response.status_code == 200
+    generator.assert_awaited_once()
+    assert generator.call_args.kwargs["user_id"] == "web"

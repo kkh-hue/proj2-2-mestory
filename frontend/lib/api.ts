@@ -5,6 +5,10 @@ import type { EquipmentSummaryItem } from "../types/equipment";
 import type { DowntimeAnalysis, DowntimeAnalysisQuery } from "../types/downtimeAnalysis";
 
 const READ_REQUEST_TIMEOUT_MS = 10_000;
+// 메일 발송은 외부 서비스(Resend)를 거치므로 읽기보다 넉넉하게 준다.
+// 서버 쪽 발송 제한이 15초라, 그보다 조금 길게 잡아야 "서버는 실패로 끝냈는데
+// 화면만 먼저 포기하는" 어긋남이 생기지 않는다.
+const EMAIL_REQUEST_TIMEOUT_MS = 20_000;
 const ANALYSIS_REQUEST_TIMEOUT_MS = 120_000;
 
 export class ReportApiError extends Error {
@@ -127,6 +131,21 @@ export async function getReport(reportId: string): Promise<SavedReport> {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
   return (await response.json()) as SavedReport;
+}
+
+// 리포트를 메일로 보낸다 (docs/specs/report-email.md).
+// 보내는 것은 받는 사람 주소 하나뿐이다 — 리포트 내용은 서버가 report_id로 직접 꺼낸다.
+// 화면이 보낸 내용을 그대로 메일에 넣으면 요청을 조작해 아무 내용이나 보낼 수 있기 때문이다.
+export async function sendReportEmail(reportId: string, to: string): Promise<void> {
+  const response = await fetchWithTimeout(
+    `${getBaseUrl()}/reports/${encodeURIComponent(reportId)}/email`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to }) },
+    // 읽기(10초)보다 넉넉하게 준다 — 메일 발송은 외부 서비스를 거치느라 더 걸린다.
+    EMAIL_REQUEST_TIMEOUT_MS,
+  );
+  if (!response.ok) {
+    throw new ReportApiError(response.status, await parseErrorBody(response));
+  }
 }
 
 // asOf: "YYYY-MM-DD". 상단 날짜 선택 — 안 주면 backend가 오늘 기준으로 계산한다.

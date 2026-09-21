@@ -1,9 +1,10 @@
 # Spec — 리포트 메일 발송
 
-- 담당: 박민영 · 상태: 작성 완료, 구현 대기
-- 코드(예정): `backend/main.py`, `backend/email_sender.py`(신규), `backend/db.py`(조회 재사용),
-  `frontend/app/reports/[id]/page.tsx`, `frontend/lib/api.ts`
-- ⚠️ `backend/main.py`는 홍민하 님, `frontend/`는 강경희 님 영역 → PR 설명에 밝힌다
+- 담당: 박민영 · 상태: **구현 완료 · 배포 확인 완료** (2026-09-21)
+- 코드: `backend/report_email.py`(신규), `backend/main.py`(엔드포인트), `backend/db.py`(조회 재사용),
+  `backend/requirements.txt`, `frontend/lib/api.ts`, `frontend/app/reports/[id]/page.tsx`,
+  `frontend/components/icons.tsx`, `frontend/app/globals.css`
+- ✅ `backend/main.py`(홍민하 님), `frontend/`(강경희 님) 모두 PR 설명에 밝히고 리뷰받아 머지 완료
 
 ## Why
 
@@ -93,7 +94,7 @@ POST /reports/{report_id}/email
 **제약**
 
 - 발송 수단은 **Resend HTTPS API**. SMTP는 포트가 막혀 못 쓴다.
-- 발송기(`backend/email_sender.py`)는 **HTTP 호출만** 담당하고 권한 판단은 하지 않는다.
+- 발송기(`backend/report_email.py`의 `send_email`)는 **HTTP 호출만** 담당하고 권한 판단은 하지 않는다.
   시험에서 이 함수 하나만 가짜로 바꾸면 "몇 번 불렸는지"를 셀 수 있어야 한다.
 - 시험은 **실제 메일을 보내지 않는다.** 발송기를 모의 처리한다.
 - Resend API의 정확한 요청 형식(엔드포인트·필드명)은 **구현 단계에서 공식 문서로 확인한다.**
@@ -137,3 +138,45 @@ POST /reports/{report_id}/email
 - WHEN: 허용된 주소로 요청한다
 - THEN: **502**를 돌려주고, 예외가 밖으로 새지 않으며,
   이어지는 다른 요청(예: `GET /health`)이 정상 응답한다
+
+## 검증 이력
+
+**기계 검증** — `tests/test_report_email.py` 60개, `pytest -q` 전건 통과
+
+| AC | 내용 | 결과 |
+|---|---|---|
+| AC-01 | 허용된 주소 → 200, 발송기 1회 호출 | ✅ pytest |
+| AC-02 | 허용 안 된 주소 → 403, 발송기 미호출 | ✅ pytest |
+| AC-03 | 없는 `report_id` → 404, 발송기 미호출 | ✅ pytest |
+| AC-04 | 메일 형식 아님 → 422, 발송기 미호출 | ✅ pytest |
+| AC-05 | 허용 목록이 비면 모두 403 | ✅ pytest |
+| AC-06 | 본문에 설비·기간·원인 건수와 링크 | ✅ pytest |
+| AC-07 | 발송 실패 → 502, 서버는 계속 동작 | ✅ pytest |
+
+시험에서 확인하는 것이 두 가지 더 있다.
+
+- **허용 목록 검사가 DB 조회보다 먼저인지.** 순서가 뒤집히면 허용되지 않은 주소로 요청했을 때도
+  404와 403이 갈려 "그 리포트가 실재하는지"가 새어 나간다.
+- **요청 바디에 리포트 내용을 끼워 넣어도 무시되는지.** 이게 뚫리면 누구나 아무 내용이나 담은
+  메일을 우리 도메인 이름으로 보낼 수 있다.
+
+**수동 검증 (2026-09-21, 배포 환경)**
+
+| 확인 | 결과 |
+|---|---|
+| 허용 목록의 주소로 발송 → 메일 도착 | ✅ 통과 |
+| 허용되지 않은 주소 → 403과 한국어 안내 | ✅ 통과 |
+
+**배포하면서 겪은 것**
+
+- `.env`에 넣은 값은 **배포 서버로 올라가지 않는다**(`.gitignore` 대상). Railway `backend` 서비스의
+  Variables에 따로 넣어야 한다. 이걸 놓쳐 처음에는 모든 주소가 403이었다 —
+  허용 목록이 비었을 때 전부 막는 AC-05가 의도대로 작동한 것이다.
+- `FRONTEND_BASE_URL`을 `http://localhost:3000`으로 두면 메일 링크가 받는 사람 컴퓨터를
+  가리켜 열리지 않는다. 배포 환경에서는 반드시 공개 주소로 둔다.
+
+**남은 한계**
+
+- 화면 동작은 프론트 테스트 러너가 없어 수동 확인 항목이다.
+- 발송 이력을 남기지 않는다(Out of Scope). 누가 언제 누구에게 보냈는지 추적할 수 없다.
+- 도메인을 인증하기 전에는 발신 주소가 `onboarding@resend.dev`로 고정된다.
