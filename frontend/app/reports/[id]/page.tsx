@@ -37,7 +37,11 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
           setError("리포트를 찾을 수 없습니다.\n삭제되었거나 존재하지 않는 리포트입니다.");
           return;
         }
-        setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다.");
+        if (cause instanceof ReportApiError || (cause instanceof Error && cause.message.includes("10초"))) {
+          setError("리포트를 불러오지 못했습니다.\n다시 시도해 주세요.");
+        } else {
+          setError("네트워크 연결을 확인해 주세요.");
+        }
       })
       .finally(() => setLoading(false));
   }, [params.id]);

@@ -24,6 +24,7 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [refreshError, setRefreshError] = useState("");
   const [asOf, setAsOf] = useState(todayKst());
   const tick = useLiveTick(asOf);
   const loadedFor = useRef<string | null>(null); // 같은 날짜를 다시 조회할 땐 화면을 로딩 상태로 바꾸지 않는다
@@ -42,8 +43,16 @@ export default function AlertsPage() {
         setAlerts(data);
         loadedFor.current = asOf;
         setError("");
+        setRefreshError("");
       })
-      .catch((cause) => !cancelled && !silent && setError(alertsErrorMessage(cause)))
+      .catch((cause) => {
+        if (cancelled) return;
+        if (silent) {
+          setRefreshError("최신 알림을 불러오지 못했습니다.");
+        } else {
+          setError(alertsErrorMessage(cause));
+        }
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -68,6 +77,10 @@ export default function AlertsPage() {
         <section className="status-card status-error" role="alert">
           <span style={{ whiteSpace: "pre-line" }}>{error}</span>
         </section>
+      )}
+
+      {!loading && !error && refreshError && (
+        <p className="form-error" role="status">{refreshError}</p>
       )}
 
       {!loading && !error && (
