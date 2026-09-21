@@ -14,6 +14,7 @@ import { getReport, listEquipment } from "../../../lib/api";
 import { reportScope, reportTitle } from "../../../lib/labels";
 import type { EquipmentSummaryItem } from "../../../types/equipment";
 import { downloadCsv } from "../../../lib/reportCsv";
+import { splitSentences, splitSteps } from "../../../lib/text";
 import type { SavedReport } from "../../../types/report";
 
 export default function ReportDetailPage({ params }: { params: { id: string } }) {
@@ -77,13 +78,23 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
             <InsightPanel report={report} />
           </div>
           <CauseDetailTable causes={report.causes} />
+          {/* 한 덩어리로 오는 긴 서술을 항목/문장 단위로 끊어 그린다 (lib/text.ts).
+              권장 조치는 "1) 2) 3)" 번호 단위, 참고 사항은 문장 단위가 읽기 좋다. */}
           <section className="recommendation-panel">
             <h3>권장 조치</h3>
-            <p>{report.recommended_action}</p>
+            <ul className="panel-lines">
+              {splitSteps(report.recommended_action).map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
           </section>
           <section className="note-panel">
             <h3>분석 참고 사항</h3>
-            <p>{report.confidence_note}</p>
+            <ul className="panel-lines">
+              {splitSentences(report.confidence_note).map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
           </section>
         </>
       )}

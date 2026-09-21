@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { IconChevronRight } from "./icons";
+import { splitSentences } from "../lib/text";
 import type { DowntimeCause } from "../types/report";
 
 const tierOf: Record<DowntimeCause["severity"], "critical" | "warning" | "ok" | "unknown"> = {
@@ -29,7 +30,13 @@ function DetailRow({ cause }: { cause: DowntimeCause }) {
       {open && (
         <tr className="detail-row-evidence">
           <td colSpan={5}>
-            <strong>판단 근거</strong> {cause.evidence}
+            <strong>판단 근거</strong>
+            {/* 근거가 300자 넘게 한 덩어리로 오므로 문장 단위로 끊어 그린다 (lib/text.ts) */}
+            <ul className="panel-lines">
+              {splitSentences(cause.evidence).map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
           </td>
         </tr>
       )}

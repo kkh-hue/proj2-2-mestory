@@ -32,7 +32,15 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .spinner { width:22px; height:22px; border:3px solid #ddd8fa; border-top-color:#7565d5; border-radius:50%; animation:spin .8s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
 .report-heading,.cause-title,.cause-top,.condition-row { display:flex; align-items:center; justify-content:space-between; gap:12px; } .report-period { color:#7565d5; font-size:13px; } .condition-row { justify-content:flex-start; padding:12px 0 20px; color:var(--muted); font-size:13px; } .condition-row span { padding-right:16px; border-right:1px solid var(--line); } .condition-row span:last-child { border:0; }
 .report-top-action { margin-bottom:8px; }
-.recommendation-panel,.note-panel,.data-panel { border-radius:13px; padding:15px 17px; margin-top:12px; } .recommendation-panel { background:var(--purple); } .note-panel { background:var(--blue); } .data-panel { background:var(--teal); } .recommendation-panel p,.note-panel p,.data-panel p { margin:0; line-height:1.65; font-size:14px; overflow-wrap:anywhere; }
+.recommendation-panel,.note-panel,.data-panel { border-radius:13px; padding:15px 17px; margin-top:12px; } .recommendation-panel { background:var(--purple); } .note-panel { background:var(--blue); } .data-panel { background:var(--teal); } /* white-space:pre-line — 백엔드가 항목을 줄바꿈으로 구분해 보내므로(llm.py의 Field description)
+   그 줄바꿈을 화면에 살린다. 없으면 600자가 한 덩어리로 붙어 읽을 수 없다.
+   연속 공백은 접어 주므로 모델이 들여쓰기를 섞어 보내도 레이아웃이 깨지지 않는다. */
+.recommendation-panel p,.note-panel p,.data-panel p { margin:0; line-height:1.75; font-size:14px; overflow-wrap:anywhere; white-space:pre-line; }
+/* 긴 서술을 항목/문장 단위로 끊어 그리는 목록 (lib/text.ts의 splitSteps·splitSentences).
+   글머리 기호는 쓰지 않는다 — 내용에 이미 "1)" 번호나 "(정비팀)" 라벨이 들어 있어 겹친다.
+   줄 사이를 띄우는 것만으로 충분히 구분된다. */
+.panel-lines { list-style:none; margin:0; padding:0; display:grid; gap:9px; }
+.panel-lines li { margin:0; line-height:1.75; font-size:14px; overflow-wrap:anywhere; white-space:pre-line; }
 .cause-section { margin-top:24px; } .cause-title { border-bottom:1px solid var(--line); padding-bottom:10px; } .cause-title h3 { margin:0; } .cause-title span { color:var(--muted); font-size:12px; } .cause-list { display:grid; gap:12px; margin-top:14px; } .cause-item { border:1px solid var(--line); border-radius:13px; padding:16px; } .cause-top { justify-content:flex-start; } .cause-code { font-weight:800; } .severity,.confirmation { border-radius:99px; padding:4px 9px; font-size:11px; font-weight:700; } .severity-high { color:#a83e3e; background:#ffe3e3; } .severity-medium { color:#98700b; background:#fff2c7; } .severity-low { color:#397b50; background:#dff3e4; } .severity-unknown { color:#6b7386; background:#eef0f4; } .confirmation { color:#657084; background:#edf0f4; margin-left:auto; } details { color:#657084; font-size:13px; } summary { cursor:pointer; } details p { margin:10px 0 0; color:#536078; line-height:1.6; }
 .new-analysis-action { display:flex; justify-content:center; margin-top:28px; }
 @media (max-width:760px) { .app-shell { padding:28px 16px 56px; } .content-grid { grid-template-columns:1fr; } .report-heading,.report-heading-actions { align-items:flex-start; flex-direction:column; } .date-range-fields { grid-template-columns:1fr; gap:12px; } .date-separator { display:none; } .input-screen,.screen-panel { margin-top:6vh; } .status-actions { flex-wrap:wrap; } }
@@ -187,8 +195,11 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .detail-row:hover td { background:#fafaff; }
 .events-row-chevron { transition:transform .15s ease; }
 .events-row-chevron-open { transform:rotate(90deg); }
-.detail-row-evidence td { background:#faf9ff; color:#5b667c; font-size:12.5px; line-height:1.6; padding:12px 14px; white-space:normal; overflow-wrap:anywhere; }
-.detail-row-evidence strong { color:#4a5468; margin-right:6px; }
+/* white-space를 normal에서 pre-line으로: evidence는 근거가 여러 개면 줄바꿈으로 구분돼 온다
+   (llm.py의 Field description). normal이면 그 줄바꿈이 공백으로 접혀 300자가 한 덩어리가 된다. */
+.detail-row-evidence td { background:#faf9ff; color:#5b667c; font-size:12.5px; line-height:1.7; padding:12px 14px; white-space:pre-line; overflow-wrap:anywhere; }
+/* 라벨을 블록으로: 근거가 여러 줄일 때 첫 줄만 라벨 옆에 붙고 나머지가 밀려 내려가면 읽기 나쁘다 */
+.detail-row-evidence strong { display:block; color:#4a5468; margin:0 0 6px; }
 
 .filter-row-4 { grid-template-columns:repeat(4, minmax(0,1fr)); }
 .filter-value-display { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:14px; font-weight:700; color:var(--ink); cursor:default; }
@@ -440,7 +451,9 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-bubble { max-width:78%; border-radius:16px; padding:14px 18px; font-size:13.5px; line-height:1.65; }
 .ai-bubble-user { background:var(--accent); color:#fff; border-top-right-radius:4px; }
 .ai-bubble-answer { background:#f5f4ff; color:var(--ink); border-top-left-radius:4px; width:100%; }
-.ai-answer-headline { margin:0 0 14px; font-size:14.5px; }
+/* p 하나가 아니라 문장별 p 여러 개를 담는 컨테이너다 (lib/text.ts의 splitSentences) */
+.ai-answer-headline { margin:0 0 14px; display:grid; gap:8px; }
+.ai-answer-headline p { margin:0; font-size:14.5px; line-height:1.7; }
 .ai-answer-headline strong { color:var(--accent); }
 .ai-answer-details { display:grid; gap:10px; margin-bottom:16px; }
 /* "분석 참고 사항" 값(confidence_note)이 길면(수백 자) flex 자식은 기본적으로
@@ -450,6 +463,14 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-answer-row dt { display:inline-flex; align-items:center; gap:6px; color:#5b667c; font-weight:600; flex:0 0 auto; }
 .ai-answer-row dt svg { width:14px; height:14px; color:var(--accent); }
 .ai-answer-row dd { margin:0; font-weight:700; color:var(--ink); flex:1 1 auto; min-width:0; overflow-wrap:anywhere; text-align:right; }
+/* 값이 긴 칸(분석 참고 사항·이미지에서 확인한 것)은 위 가로 배치를 쓰지 않는다.
+   400자가 넘는 글을 오른쪽 정렬하면 줄 시작점이 매 줄 달라져 눈이 따라가지 못한다.
+   라벨 아래로 내리고 왼쪽 정렬 + 줄바꿈 반영으로 바꾼다. */
+.ai-answer-row-block { flex-direction:column; align-items:stretch; gap:7px; }
+.ai-answer-row-block dd { text-align:left; font-weight:500; line-height:1.75; color:#3d4863; white-space:pre-line; }
+/* 말풍선 안은 폭이 좁아 본문보다 한 단계 작게 — 바깥 패널과 같은 14px이면 답답해 보인다 */
+.ai-answer-row-block .panel-lines { gap:7px; }
+.ai-answer-row-block .panel-lines li { font-size:13px; line-height:1.7; }
 .ai-report-button { font-size:12.5px; padding:9px 14px; }
 .ai-chat-time { display:block; font-size:11px; color:#9aa3b5; margin:6px 0 18px 56px; }
 .ai-chat-time-user { text-align:right; margin:6px 56px 18px 0; }
