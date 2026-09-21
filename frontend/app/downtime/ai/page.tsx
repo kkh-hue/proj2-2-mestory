@@ -116,6 +116,8 @@ export default function AiAnalysisChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 확대해서 보고 있는 첨부 사진. null이면 닫힌 상태다.
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState(true);
   const [reviewNeeded, setReviewNeeded] = useState<EquipmentSummaryItem[]>([]);
   const [allEquipment, setAllEquipment] = useState<EquipmentSummaryItem[]>([]);
@@ -169,6 +171,16 @@ export default function AiAnalysisChatPage() {
     loadSession(loadOrCreateSessionId());
     refreshSessions();
   }, []);
+
+  // 확대 보기는 ESC로도 닫는다. 열려 있을 때만 리스너를 달아 둔다.
+  useEffect(() => {
+    if (!zoomedImage) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setZoomedImage(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [zoomedImage]);
 
   // 사용자가 57대 설비 상태를 일일이 파악할 수 없으니, 확인이 필요한(정상이 아닌)
   // 설비만 추려 버튼으로 먼저 보여준다 — 설비관리 화면과 같은 status 값을, 같은 날짜(asOf)
@@ -387,8 +399,17 @@ export default function AiAnalysisChatPage() {
                       {turn.images && turn.images.length > 0 && (
                         <div className="ai-bubble-images">
                           {turn.images.map((src, imageIndex) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={imageIndex} src={src} alt={`첨부 이미지 ${imageIndex + 1}`} />
+                            // 말풍선 크기로는 화면 속 글씨를 읽을 수 없어, 눌러서 크게 보게 한다
+                            <button
+                              key={imageIndex}
+                              type="button"
+                              className="ai-bubble-thumb"
+                              onClick={() => setZoomedImage(src)}
+                              aria-label={`첨부 이미지 ${imageIndex + 1} 크게 보기`}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={src} alt={`첨부 이미지 ${imageIndex + 1}`} />
+                            </button>
                           ))}
                         </div>
                       )}
@@ -561,6 +582,21 @@ export default function AiAnalysisChatPage() {
           )}
         </aside>
       </div>
+
+      {/* 첨부 사진 확대 보기. 배경 아무 곳이나 누르거나 ESC로 닫는다.
+          button으로 만든 이유는 키보드로도 닫을 수 있어야 하기 때문이다. */}
+      {zoomedImage && (
+        <button
+          type="button"
+          className="image-viewer"
+          onClick={() => setZoomedImage(null)}
+          aria-label="확대 보기 닫기"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={zoomedImage} alt="첨부 이미지 확대" />
+          <span className="image-viewer-hint">아무 곳이나 누르거나 ESC를 눌러 닫습니다</span>
+        </button>
+      )}
     </main>
   );
 }
