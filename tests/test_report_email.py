@@ -406,3 +406,214 @@ def test_200이면_조용히_끝난다(send_env):
     send_env.setattr(httpx, "AsyncClient", fake)
 
     assert run_send() is None                      # 반환값 없음 = 성공
+
+
+# ─────────────────────────────────────────────
+# (4) POST /reports/{id}/email — Spec AC-01 ~ AC-07
+#
+# 실제 메일은 보내지 않는다. main.py가 쓰는 send_email만 가짜로 바꿔
+# "몇 번 불렸는지"와 "무엇을 넘겼는지"를 본다.
+# ─────────────────────────────────────────────
+import importlib.util  # noqa: E402
+from pathlib import Path  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+SAMPLE_REPORT = {
+    "id": "report-1",
+    "equipment_id": "EQ-006",
+    "line_id": "LINE-A",
+    "period": "2026-08-10 ~ 2026-08-10",
+    "causes": [{"error_code": "E-102", "description": "서보모터 과전류",
+                "severity": "중대", "evidence": "로그 13건", "is_confirmed": True}],
+    "unclassified_count": 0,
+    "confidence_note": "현장 확인 필요.",
+    "recommended_action": "1) 전류 측정",
+}
+
+
+@pytest.fixture
+def api(monkeypatch):
+    """backend/main.py를 따로 불러와 send_email과 get_report를 가짜로 바꾼다.
+
+    기존 tests/test_report_api.py와 같은 방식 — 다른 시험의 앱·환경을 건드리지 않으려고
+    모듈을 새 이름으로 읽어들인다.
+    """
+    monkeypatch.setenv("REPORT_EMAIL_ALLOWLIST", "ok@example.com")
+    monkeypatch.setenv("FRONTEND_BASE_URL", "https://app.example.com")
+
+    path = Path(__file__).resolve().parents[1] / "backend" / "main.py"
+    spec = importlib.util.spec_from_file_location("backend._report_email_test", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    sender = AsyncMock(return_value=None)
+    monkeypatch.setattr(module, "send_email", sender)
+    monkeypatch.setattr(module, "get_report", AsyncMock(return_value=dict(SAMPLE_REPORT)))
+    return module, sender
+
+
+# ── AC-01 · 허용된 주소로 보내면 발송된다 ──
+def test_AC01_허용된_주소는_200이고_발송기가_한_번_불린다(api):
+    module, sender = api
+
+    response = TestClient(module.app).post(
+        "/reports/report-1/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "to": "ok@example.com"}
+    assert sender.await_count == 1
+
+
+# ── AC-02 · 허용되지 않은 주소는 막는다 ──
+def test_AC02_허용되지_않은_주소는_403이고_발송기가_안_불린다(api):
+    module, sender = api
+
+    response = TestClient(module.app).post(
+        "/reports/report-1/email", json={"to": "stranger@evil.com"})
+
+    assert response.status_code == 403
+    assert sender.await_count == 0
+
+
+def test_AC02_허용목록_검사가_DB조회보다_먼저다(api):
+    """허용되지 않은 주소면 리포트가 있든 없든 403이다.
+
+    순서가 반대면 "그 리포트가 있는지 없는지"를 404/403으로 구분해 알려주게 된다.
+    """
+    module, sender = api
+    module.get_report = AsyncMock(return_value=None)   # 리포트가 없는 상황
+
+    response = TestClient(module.app).post(
+        "/reports/없는리포트/email", json={"to": "stranger@evil.com"})
+
+    assert response.status_code == 403      # 404가 아니다
+    assert sender.await_count == 0
+
+
+# ── AC-03 · 없는 리포트는 404 ──
+def test_AC03_없는_리포트는_404이고_발송기가_안_불린다(api, monkeypatch):
+    module, sender = api
+    monkeypatch.setattr(module, "get_report", AsyncMock(return_value=None))
+
+    response = TestClient(module.app).post(
+        "/reports/없는리포트/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 404
+    assert sender.await_count == 0
+
+
+# ── AC-04 · 메일 형식이 아니면 422 ──
+@pytest.mark.parametrize("bad", [
+    "골뱅이없는문자열",
+    "@example.com",          # 아이디 없음
+    "ok@",                   # 도메인 없음
+    "ok@example",            # 점 없음
+    "ok @example.com",       # 공백
+    "",
+])
+def test_AC04_메일_형식이_아니면_422이고_발송기가_안_불린다(api, bad):
+    module, sender = api
+
+    response = TestClient(module.app).post("/reports/report-1/email", json={"to": bad})
+
+    assert response.status_code == 422
+    assert sender.await_count == 0
+
+
+def test_AC04_to가_아예_없으면_422(api):
+    module, sender = api
+
+    response = TestClient(module.app).post("/reports/report-1/email", json={})
+
+    assert response.status_code == 422
+    assert sender.await_count == 0
+
+
+# ── AC-05 · 허용 목록이 비면 아무도 못 받는다 ──
+@pytest.mark.parametrize("empty", ["", "   ", ","])
+def test_AC05_허용목록이_비면_403이다(api, monkeypatch, empty):
+    module, sender = api
+    monkeypatch.setenv("REPORT_EMAIL_ALLOWLIST", empty)
+
+    response = TestClient(module.app).post(
+        "/reports/report-1/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 403
+    assert sender.await_count == 0
+
+
+def test_AC05_허용목록_환경변수가_아예_없으면_403이다(api, monkeypatch):
+    module, sender = api
+    monkeypatch.delenv("REPORT_EMAIL_ALLOWLIST", raising=False)
+
+    response = TestClient(module.app).post(
+        "/reports/report-1/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 403
+    assert sender.await_count == 0
+
+
+# ── AC-06 · 본문에 리포트 내용과 링크가 들어간다 ──
+def test_AC06_본문에_설비_기간_원인건수와_링크가_들어간다(api):
+    module, sender = api
+
+    TestClient(module.app).post("/reports/report-1/email", json={"to": "ok@example.com"})
+
+    kwargs = sender.await_args.kwargs
+    assert "EQ-006" in kwargs["subject"]
+    for body in (kwargs["html"], kwargs["text"]):
+        assert "EQ-006" in body                                   # 설비
+        assert "2026-08-10 ~ 2026-08-10" in body                  # 기간
+        assert "E-102" in body                                    # 원인
+        assert "https://app.example.com/reports/report-1" in body  # 상세 페이지 링크
+    assert "원인 1건" in kwargs["html"]                            # 원인 건수
+
+
+def test_AC06_화면이_보낸_내용이_아니라_DB_값을_쓴다(api, monkeypatch):
+    """요청 바디에 리포트 내용을 끼워 넣어도 무시된다.
+
+    이게 뚫리면 누구나 아무 내용이나 담은 메일을 우리 도메인 이름으로 보낼 수 있다.
+    """
+    module, sender = api
+
+    TestClient(module.app).post(
+        "/reports/report-1/email",
+        json={"to": "ok@example.com", "equipment_id": "가짜설비", "causes": [{"error_code": "가짜코드"}]},
+    )
+
+    html = sender.await_args.kwargs["html"]
+    assert "EQ-006" in html          # DB에서 꺼낸 값
+    assert "가짜설비" not in html     # 요청에 끼워 넣은 값은 무시
+    assert "가짜코드" not in html
+
+
+# ── AC-07 · 발송 실패해도 서버는 살아 있다 ──
+def test_AC07_발송이_실패하면_502이고_서버는_계속_동작한다(api, monkeypatch):
+    module, _ = api
+    monkeypatch.setattr(
+        module, "send_email",
+        AsyncMock(side_effect=report_email.ReportEmailError("Resend 오류")),
+    )
+    client = TestClient(module.app)
+
+    response = client.post("/reports/report-1/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 502
+    # 예외가 밖으로 새면 서버가 죽는다 — 이어지는 요청이 정상인지 확인한다
+    assert client.get("/health").status_code == 200
+
+
+def test_DB가_죽으면_503이다(api, monkeypatch):
+    module, sender = api
+    monkeypatch.setattr(
+        module, "get_report",
+        AsyncMock(side_effect=module.DatabaseUnavailableError("DB 연결 실패")),
+    )
+
+    response = TestClient(module.app).post(
+        "/reports/report-1/email", json={"to": "ok@example.com"})
+
+    assert response.status_code == 503
+    assert sender.await_count == 0
