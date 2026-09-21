@@ -1,10 +1,11 @@
 # Spec — 채팅 첨부 사진 유지 (새로고침 후에도 보이게)
 
-- 담당: 박민영 · 상태: 작성 완료, 구현 대기
+- 담당: 박민영 · 상태: **구현 완료 · 배포 확인 완료** (PR #101 구현 / #102 시험 / #104 판독성 수정)
 - 코드: `backend/db.py`, `backend/images.py`(신규), `backend/services/llm.py`,
-  `backend/requirements.txt`, `frontend/types/report.ts`, `frontend/app/downtime/ai/page.tsx`
+  `backend/requirements.txt`, `frontend/types/report.ts`,
+  `frontend/app/downtime/ai/page.tsx`, `frontend/app/globals.css`
 - 앞선 Spec: [multimodal.md](./multimodal.md) — AC-10의 취지를 좁혀서 다시 정의한다
-- ⚠️ `llm.py`는 홍민하 님, `frontend/`는 강경희 님 영역 → PR 설명에 밝힌다
+- ✅ `llm.py`(홍민하 님), `frontend/`(강경희 님) 모두 PR 설명에 밝히고 리뷰받아 머지 완료
 
 ## Why
 
@@ -96,8 +97,8 @@
 alter table chat_messages add column if not exists display_images jsonb
 
 # backend/images.py (신규)
-THUMBNAIL_MAX_PX = 512      # 가로·세로 중 긴 쪽 기준, 비율 유지
-THUMBNAIL_QUALITY = 70      # JPEG 품질
+THUMBNAIL_MAX_PX = 1024     # 가로·세로 중 긴 쪽 기준, 비율 유지 (처음엔 512였다 — AC-03 주석 참고)
+THUMBNAIL_QUALITY = 60      # JPEG 품질. 해상도를 올린 만큼 낮춰 용량을 맞췄다
 to_thumbnail(data_url: str) -> str | None       # 실패하면 None
 to_thumbnails(data_urls: list[str]) -> list[str]  # None인 것은 빼고 돌려준다
 
@@ -147,14 +148,6 @@ interface ChatTurn { ...; images?: string[] }   # ChatTurnView 로컬 타입에�
 > 판독이 안 되면 저장하는 의미가 없다. 해상도를 1024로 올리고 JPEG 품질을 60으로 낮춰
 > 용량을 맞췄다. 실측: HMI 화면 사진 31KB, 노이즈가 많은 최악 조건 사진 227KB.
 
-**AC-07 · 첨부 사진을 크게 볼 수 있다**
-- GIVEN: 말풍선에 첨부 사진이 보이는 상태
-- WHEN: 그 사진을 누른다
-- THEN: 화면 가득 확대되어 글씨를 읽을 수 있고, 배경을 누르거나 ESC로 닫힌다 (수동 확인)
-
-> 말풍선은 폭이 좁아 그 안에서 화면 속 글씨를 읽는 것은 해상도와 무관하게 무리다.
-> 확대가 사실상 유일한 판독 경로라 AC로 올렸다.
-
 **AC-04 · 변환 실패가 리포트 생성을 막지 않는다**
 - GIVEN: base64가 깨져 이미지로 열 수 없는 data URL
 - WHEN: `to_thumbnails([깨진 것, 정상인 것])`을 부른다
@@ -169,3 +162,44 @@ interface ChatTurn { ...; images?: string[] }   # ChatTurnView 로컬 타입에�
 - GIVEN: `display_images`가 NULL인 행
 - WHEN: `list_chat_turns()`로 읽는다
 - THEN: 그 턴에 `images`가 없고 나머지 필드는 정상이다
+
+**AC-07 · 첨부 사진을 크게 볼 수 있다**
+- GIVEN: 말풍선에 첨부 사진이 보이는 상태
+- WHEN: 그 사진을 누른다
+- THEN: 화면 가득 확대되어 글씨를 읽을 수 있고, 배경을 누르거나 ESC로 닫힌다 (수동 확인)
+
+> 말풍선은 폭이 좁아 그 안에서 화면 속 글씨를 읽는 것은 해상도와 무관하게 무리다.
+> 확대가 사실상 유일한 판독 경로라, "있으면 좋은 것"이 아니라 AC로 올렸다.
+
+## 검증 이력
+
+**기계 검증** — `tests/test_chat_image_persistence.py` 14개, `pytest -q` 전건 통과
+
+| AC | 내용 | 결과 |
+|---|---|---|
+| AC-02 | `load_chat_history()`에 `data:image` 없음 | ✅ pytest |
+| AC-03 | 썸네일 250KB 이하 · 1024px 이하 | ✅ pytest |
+| AC-04 | 변환 실패가 리포트 생성을 막지 않음 | ✅ pytest |
+| AC-05 | 이미지 없는 요청 회귀 없음 | ✅ pytest |
+| AC-06 | 옛 대화(NULL) 안 깨짐 | ✅ pytest |
+
+> AC-02는 값뿐 아니라 `load_chat_history()`가 만드는 **SQL 문자열**에 `display_images`가
+> 없는지도 검사한다. 나중에 그 경로에 컬럼이 추가되면 시험이 먼저 막는다.
+
+**수동 검증 (2026-09-21, 배포 환경)** — 프론트 테스트 러너가 없어 눈으로 확인했다.
+
+| AC | 내용 | 결과 |
+|---|---|---|
+| AC-01 | 새로고침 후에도 말풍선에 사진이 보인다 | ✅ 통과 |
+| AC-07 | 눌러서 크게 볼 수 있고 글씨가 읽힌다 | ✅ 통과 |
+
+**AC-01은 한 번에 통과하지 못했다.** 첫 배포에서 사진은 남았지만 **512px + 88px 정사각
+잘라내기(`object-fit: cover`) 때문에 어떤 화면인지 알아볼 수 없었다.** 저장은 됐으나
+목적("그 분석이 무엇을 보고 나온 것인지 확인")은 이루지 못한 상태였다.
+해상도를 1024로 올리고, 잘라내기를 없애고, 확대 보기를 더한 뒤에야 통과했다(PR #104).
+
+**남은 한계**
+
+- 이 기능 이전에 저장된 대화의 사진은 복원할 수 없다(저장한 적이 없다). NULL이라 정상 렌더링된다.
+- **PR #104 이전에 저장된 사진은 512px 그대로다.** 새로 첨부하는 사진부터 1024px로 저장된다.
+- 확대 보기는 수동 확인 항목이라 회귀를 자동으로 잡지 못한다. 프론트 테스트 러너가 생기면 옮긴다.
