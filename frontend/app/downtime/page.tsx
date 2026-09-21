@@ -4,7 +4,7 @@
 // 데이터는 GET /downtime/analysis (docs/specs/downtime-analysis.md). LLM 원인 분석은 "분석 실행"(/downtime/report).
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import CauseInfoModal from "../../components/CauseInfoModal";
 import DateField from "../../components/DateField";
 import FilterCard from "../../components/FilterCard";
@@ -27,6 +27,7 @@ import {
 import { getDowntimeAnalysis, listEquipment, ReportApiError } from "../../lib/api";
 import { todayKst } from "../../lib/date";
 import { equipmentLabel, lineLabel } from "../../lib/labels";
+import { useLiveTick } from "../../lib/useLiveTick";
 import type { AnalysisCause, AnalysisStatus, DowntimeAnalysis } from "../../types/downtimeAnalysis";
 import type { EquipmentSummaryItem } from "../../types/equipment";
 
@@ -103,8 +104,11 @@ function DowntimeAnalysisView() {
   const [error, setError] = useState("");
   const [equipmentError, setEquipmentError] = useState("");
   const [selectedCause, setSelectedCause] = useState<AnalysisCause | null>(null);
+  const tick = useLiveTick(dateTo);
+  const loadedFor = useRef<string | null>(null);
 
   const rangeInvalid = dateFrom > dateTo;
+  const queryKey = `${dateFrom}|${dateTo}|${lineId}|${equipmentId}|${status}`;
 
   useEffect(() => {
     listEquipment()
@@ -115,8 +119,11 @@ function DowntimeAnalysisView() {
   useEffect(() => {
     if (rangeInvalid) return;
     let cancelled = false; // 조건을 빠르게 바꿀 때 늦게 도착한 이전 응답이 덮어쓰지 않게
-    setLoading(true);
-    setError("");
+    const silent = loadedFor.current === queryKey;
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     getDowntimeAnalysis({
       date_from: dateFrom,
       date_to: dateTo,
@@ -124,13 +131,18 @@ function DowntimeAnalysisView() {
       equipment_id: equipmentId || undefined,
       status,
     })
-      .then((result) => !cancelled && setData(result))
-      .catch((cause) => !cancelled && setError(downtimeErrorMessage(cause)))
+      .then((result) => {
+        if (cancelled) return;
+        setData(result);
+        loadedFor.current = queryKey;
+        setError("");
+      })
+      .catch((cause) => !cancelled && !silent && setError(downtimeErrorMessage(cause)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [dateFrom, dateTo, lineId, equipmentId, status, rangeInvalid]);
+  }, [dateFrom, dateTo, lineId, equipmentId, status, rangeInvalid, queryKey, tick]);
 
   const lines = useMemo(() => Array.from(new Set(equipment.map((e) => e.line_id))).sort(), [equipment]);
   const equipmentOptions = useMemo(
