@@ -15,4 +15,6 @@ langchain>=0.3,<1.0        # 1.0부터 create_tool_calling_agent/AgentExecutor�
                             # 이 프로젝트는 LangGraph 금지라 0.3.x(마지막 pre-1.0)에 고정한다.
 langchain-openai>=0.2,<1.0  # 위 langchain과 같은 라인으로 고정
 langchain-mcp-adapters>=0.1,<0.2  # 0.2 이상은 langchain-core 1.x 전용 messages.content 서브모듈을 요구해서 0.1.x로 낮춤
+Pillow>=11.0           # backend/images.py — 채팅에 첨부한 사진을 DB에 남길 때 썸네일로 줄인다.
+                        # 지금까지는 scripts/make_hmi_images.py(개발용)만 써서 런타임 의존성에 없었다.
 # asyncpg>=0.30       # Postgres를 쓴다면
