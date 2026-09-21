@@ -1,0 +1,279 @@
+{
+  "tag": "smoke",
+  "when": "2026-09-19T16:17:58",
+  "model": "openai/gpt-4o-mini",
+  "n": 10,
+  "unmeasured": [],
+  "degraded": [],
+  "axes": {
+    "visual_extraction": 0.9,
+    "contract": 0.975
+  },
+  "latency": {
+    "mean": 11.2981,
+    "p95": 16.15
+  },
+  "control_no_image": null,
+  "cases": [
+    {
+      "id": "MM-01",
+      "image": "normal_e102.png",
+      "note": "정상 케이스 — 이미지에서 설비ID·에러코드 추출",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "에러코드 E-102 표시됨",
+        "설비 ID EQ-006 확인",
+        "타임스탬프 2026-08-10 22:42",
+        "서보모터 과전류 트립"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "E-102",
+        "SW-503"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 16.15,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-02",
+      "image": "normal_m204_long.png",
+      "note": "정상 케이스 — 이미지에서 설비ID·에러코드 추출",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "에러코드 M-204 표시됨",
+        "설비 ID EQ-015 확인",
+        "정지 시작 시각 2026-11-02 13:00",
+        "정지 시간 720.0 분"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "M-204"
+      ],
+      "severities": [
+        "중대"
+      ],
+      "elapsed_sec": 12.53,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-03",
+      "image": "boundary_unregistered_code.png",
+      "note": "경계 케이스 — 사전에 없는 코드(X-999)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "에러코드 X-999 표시됨",
+        "설비 ID EQ-001 확인",
+        "타임스탬프 2026-08-10 09:15",
+        "정지 시간 17.0 분"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "X-999"
+      ],
+      "severities": [
+        "판정 불가"
+      ],
+      "elapsed_sec": 11.56,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-04",
+      "image": "boundary_planned_stop.png",
+      "note": "경계 케이스 — 계획 정지(ETC-602)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 0.75
+      },
+      "failed": [
+        "'ETC-602'는 원인 목록에 없어야 함 (계획 정지)"
+      ],
+      "visual_findings": [
+        "에러코드 ETC-602 표시됨",
+        "설비 ID EQ-008 확인",
+        "타임스탬프 2026-08-10 20:55"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "ETC-602",
+        "MAT-403"
+      ],
+      "severities": [
+        "경미",
+        "보통"
+      ],
+      "elapsed_sec": 11.89,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-05",
+      "image": "boundary_empty_code.png",
+      "note": "경계 케이스 — 에러코드 칸이 비어 있음",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "에러코드가 비어 있음",
+        "설비 ID: EQ-020",
+        "라인: LINE-C",
+        "정지 시작 시각: 2026-08-12 22:05",
+        "정지 시간: 35.0 min"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "ETC-604"
+      ],
+      "severities": [
+        "판정 불가"
+      ],
+      "elapsed_sec": 10.02,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-06",
+      "image": "fail_glare.png",
+      "note": "실패 유도 — 반사광으로 에러코드만 가림",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "설비 ID: EQ-006",
+        "라인: LINE-A",
+        "정지 시작 시각: 2026-08-10 22:42",
+        "정지 시간: 17.9 min"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "E-",
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "판정 불가",
+        "보통",
+        "판정 불가"
+      ],
+      "elapsed_sec": 12.28,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-07",
+      "image": "fail_blur.png",
+      "note": "실패 유도 — 초점이 안 맞은 사진",
+      "axes": {
+        "visual_extraction": 0.0,
+        "contract": 1.0
+      },
+      "failed": [
+        "사전에 없는 코드를 지어내면 안 됨 (발견: ['E-142'])"
+      ],
+      "visual_findings": [
+        "에러코드 E-142 확인",
+        "설비 ID EQ-006 확인",
+        "정지 시각 2026-08-10 22:42 확인",
+        "정지 시간 17.9 분 확인"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "E-142"
+      ],
+      "severities": [
+        "판정 불가"
+      ],
+      "elapsed_sec": 9.51,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-08",
+      "image": "fail_tilted.png",
+      "note": "실패 유도 — 기울어진 사진(라벨·값 어긋남)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "에러코드 E-102 표시됨",
+        "설비 ID EQ-006 확인",
+        "타임스탬프 2026-08-10 22:42",
+        "정지시간 17.9분"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "E-102"
+      ],
+      "severities": [
+        "보통"
+      ],
+      "elapsed_sec": 10.16,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-09",
+      "image": "fail_irrelevant.png",
+      "note": "실패 유도 — 설비와 무관한 이미지",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 9.24,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-10",
+      "image": "normal_e102.png",
+      "note": "실패 유도 — 이미지 설비ID와 입력 설비ID 불일치",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "설비 ID: EQ-006",
+        "에러 코드: E-102",
+        "시작 시각: 2026-08-10 22:42",
+        "정지 시간: 17.9분",
+        "상태: 정지됨"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-501"
+      ],
+      "severities": [
+        "보통"
+      ],
+      "elapsed_sec": 9.65,
+      "tool_calls": 3
+    }
+  ]
+}

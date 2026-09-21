@@ -1,0 +1,314 @@
+{
+  "tag": "g5_n1",
+  "when": "2026-09-21T10:04:53",
+  "model": "openai/gpt-5-mini",
+  "model_no_image": "openai/gpt-5-mini",
+  "n": 10,
+  "unmeasured": [],
+  "degraded": [],
+  "axes": {
+    "visual_extraction": 0.9,
+    "contract": 1.0
+  },
+  "latency": {
+    "mean": 19.4428,
+    "p95": 25.29
+  },
+  "control_no_image": null,
+  "cases": [
+    {
+      "id": "MM-01",
+      "image": "normal_e102.png",
+      "note": "정상 케이스 — 이미지에서 설비ID·에러코드 추출",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "EQUIPMENT  EQ-006",
+        "LINE  LINE-A",
+        "ERROR CODE  E-102",
+        "STATUS  STOPPED",
+        "START  2026-08-10 22:42",
+        "DOWNTIME  17.9 min",
+        "화면 하단 설명: '설명: 서보모터 과전류 트립'",
+        "우상단 로그 ID: LOG-011583"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 20.73,
+      "tool_calls": 4
+    },
+    {
+      "id": "MM-02",
+      "image": "normal_m204_long.png",
+      "note": "정상 케이스 — 이미지에서 설비ID·에러코드 추출",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "화면 상단에 LOG-014099 표기",
+        "EQUIPMENT: EQ-015",
+        "LINE: LINE-B",
+        "ERROR CODE: M-204",
+        "STATUS: STOPPED",
+        "START: 2026-11-02 13:00",
+        "DOWNTIME: 720.0 min",
+        "설명 텍스트: '주축 기어박스 파손'",
+        "운영자 메모(화면): '부품 입고 지연으로 장기 정지, 현장 확인 필요'"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "M-204"
+      ],
+      "severities": [
+        "중대"
+      ],
+      "elapsed_sec": 14.31,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-03",
+      "image": "boundary_unregistered_code.png",
+      "note": "경계 케이스 — 사전에 없는 코드(X-999)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "화면 상단에 LOG-014093 표기",
+        "EQUIPMENT: EQ-001",
+        "LINE: LINE-A",
+        "ERROR CODE: X-999 (빨간색으로 강조됨)",
+        "STATUS: STOPPED",
+        "START: 2026-08-10 09:15",
+        "DOWNTIME: 17.0 min",
+        "화면 하단 한글 메모: '설명: 사전에 없는 코드 — 현장 확인 필요' 및 '메모: 코드 미등록, 현장 육안 확인 필요'"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "X-999"
+      ],
+      "severities": [
+        "판정 불가"
+      ],
+      "elapsed_sec": 13.17,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-04",
+      "image": "boundary_planned_stop.png",
+      "note": "경계 케이스 — 계획 정지(ETC-602)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "EQUIPMENT: EQ-008",
+        "LINE: LINE-A",
+        "ERROR CODE: ETC-602",
+        "STATUS: STOPPED",
+        "START: 2026-08-10 20:55",
+        "DOWNTIME: 41.9 min",
+        "LOG-011563 (화면 우상단에 표시된 로그 ID)",
+        "메모: 임시조치 후 재가동"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "MAT-403"
+      ],
+      "severities": [
+        "경미"
+      ],
+      "elapsed_sec": 16.59,
+      "tool_calls": 4
+    },
+    {
+      "id": "MM-05",
+      "image": "boundary_empty_code.png",
+      "note": "경계 케이스 — 에러코드 칸이 비어 있음",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "화면 상단에 'EQUIPMENT ALARM' 표시",
+        "EQUIPMENT: EQ-020",
+        "LINE: LINE-C",
+        "ERROR CODE 항목이 비어 있음(공란)",
+        "STATUS: STOPPED",
+        "START: 2026-08-12 22:05",
+        "DOWNTIME: 35.0 min",
+        "화면 우상단에 'LOG-014095' 표기",
+        "화면 하단에 운영자 메모로 보이는 한국어 문구: '설명: 사전에 없는 코드 — 현장 확인 필요' 및 '메모: 로그 기록 누락'"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        ""
+      ],
+      "severities": [
+        "판정 불가"
+      ],
+      "elapsed_sec": 20.91,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-06",
+      "image": "fail_glare.png",
+      "note": "실패 유도 — 반사광으로 에러코드만 가림",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "화면에 EQUIPMENT: EQ-006 표시됨",
+        "화면에 LINE: LINE-A 표시됨",
+        "화면 상단에 LOG-011583 표시됨",
+        "STATUS: STOPPED로 표시됨",
+        "START: 2026-08-10 22:42 표기됨",
+        "DOWNTIME: 17.9 min 표기됨",
+        "ERROR CODE 필드는 흐리게 처리되어 식별 불가(읽을 수 없음)"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 24.88,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-07",
+      "image": "fail_blur.png",
+      "note": "실패 유도 — 초점이 안 맞은 사진",
+      "axes": {
+        "visual_extraction": 0.0,
+        "contract": 1.0
+      },
+      "failed": [
+        "사전에 없는 코드를 지어내면 안 됨 (발견: ['E-302'])"
+      ],
+      "visual_findings": [
+        "화면 상단에 'EQUIPMENT ALARM' 표시",
+        "Equipment: EQ-006",
+        "Line: LINE-A",
+        "ERROR CODE: E-302 (빨간색 강조)",
+        "STATUS: STOPPED",
+        "START: 2026-08-10 22:42",
+        "DOWNTIME: 17.9 min"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102",
+        "E-302"
+      ],
+      "severities": [
+        "보통",
+        "보통",
+        "판정 불가"
+      ],
+      "elapsed_sec": 25.29,
+      "tool_calls": 4
+    },
+    {
+      "id": "MM-08",
+      "image": "fail_tilted.png",
+      "note": "실패 유도 — 기울어진 사진(라벨·값 어긋남)",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "화면에 EQUIPMENT: EQ-006 표기",
+        "화면에 LINE: LINE-A 표기",
+        "ERROR CODE: E-102 표기(빨간색 강조)",
+        "START: STOPPED, 2026-08-10 22:42 표기",
+        "DOWNTIME: 17.9 min 표기",
+        "하단 설명에 '서보모터 과전류 트립' 한글 표기"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 18.12,
+      "tool_calls": 4
+    },
+    {
+      "id": "MM-09",
+      "image": "fail_irrelevant.png",
+      "note": "실패 유도 — 설비와 무관한 이미지",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [],
+      "used_image": true,
+      "cause_codes": [
+        "SW-503",
+        "E-102"
+      ],
+      "severities": [
+        "보통",
+        "보통"
+      ],
+      "elapsed_sec": 19.51,
+      "tool_calls": 3
+    },
+    {
+      "id": "MM-10",
+      "image": "normal_e102.png",
+      "note": "실패 유도 — 이미지 설비ID와 입력 설비ID 불일치",
+      "axes": {
+        "visual_extraction": 1.0,
+        "contract": 1.0
+      },
+      "failed": [],
+      "visual_findings": [
+        "EQUIPMENT: EQ-006",
+        "LINE: LINE-A",
+        "ERROR CODE: E-102",
+        "STATUS: STOPPED",
+        "START: 2026-08-10 22:42",
+        "DOWNTIME: 17.9 min",
+        "화면 하단 문구(한국어): '설명: 서보모터 과전류 트립'"
+      ],
+      "used_image": true,
+      "cause_codes": [
+        "SW-501",
+        "S-301"
+      ],
+      "severities": [
+        "경미",
+        "판정 불가"
+      ],
+      "elapsed_sec": 20.92,
+      "tool_calls": 3
+    }
+  ]
+}

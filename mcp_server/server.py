@@ -39,9 +39,9 @@ mcp = FastMCP("mestory-downtime")
 TOOL_DEFAULT_LIMIT = 50
 
 
-def _error(message: str) -> dict:
+def _error(message: str, hint: str = "입력값을 고쳐서 다시 호출하세요.") -> dict:
     """에러를 AI 가 읽을 수 있는 모양으로 만든다."""
-    return {"error": message, "hint": "입력값을 고쳐서 다시 호출하세요."}
+    return {"error": message, "hint": hint}
 
 
 # ─────────────────────────────────────────────
@@ -86,6 +86,8 @@ def get_downtime_logs(
         )
     except ValueError as e:        # 날짜 형식 오류 등 "입력" 문제
         return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:   # 데이터·설정 문제 (CSV 없음, 스위치 오류)
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
 
 
 # ─────────────────────────────────────────────
@@ -110,6 +112,8 @@ def get_error_code_info(error_codes: list[str]) -> dict:
         return lookup_error_codes(error_codes)
     except ValueError as e:
         return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:   # 데이터·설정 문제 (CSV 없음, 스위치 오류)
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
 
 
 # ─────────────────────────────────────────────
@@ -140,6 +144,8 @@ def get_maintenance_history(
         )
     except ValueError as e:
         return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:   # 데이터·설정 문제 (CSV 없음, 스위치 오류)
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
 
 
 # 이 파일을 직접 실행했을 때만 서버를 켠다 (stdio 방식)
