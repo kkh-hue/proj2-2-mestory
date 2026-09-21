@@ -4,7 +4,9 @@
 // PDF 다운로드는 브라우저 인쇄(다른 프린터로 저장 → PDF)로 처리한다 — 별도 서버 렌더링 없이 바로 된다.
 "use client";
 
-import { useEffect, useState } from "react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
+import { useEffect, useRef, useState } from "react";
 import CauseBreakdown from "../../../components/CauseBreakdown";
 import CauseDetailTable from "../../../components/CauseDetailTable";
 import InsightPanel from "../../../components/InsightPanel";
@@ -30,6 +32,9 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
   const [emailSending, setEmailSending] = useState(false);
   // 결과를 성공/실패로 나눠 들고 있는다 — 같은 자리에 색만 달리 보여주기 위해서다.
   const [emailResult, setEmailResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState("");
+  const reportContentRef = useRef<HTMLDivElement>(null);
 
   // 서버가 돌려준 상태 코드를 사람이 읽을 말로 바꾼다.
   // 서버 detail을 그대로 보여주지 않는 이유: 사용자가 할 수 있는 일을 알려줘야 하기 때문이다.
@@ -63,6 +68,56 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
     }
   }
 
+  function safePdfFileName(value: string) {
+    return value
+      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120) || "report";
+  }
+
+  async function handleDownloadPdf() {
+    if (!report || pdfGenerating || !reportContentRef.current) return;
+    setPdfGenerating(true);
+    setPdfError("");
+
+    try {
+      const canvas = await html2canvas(reportContentRef.current, {
+        backgroundColor: "#ffffff",
+        scale: Math.min(window.devicePixelRatio || 1, 2),
+        useCORS: true,
+        ignoreElements: (element) => element.classList.contains("no-print"),
+      });
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 10;
+      const contentWidth = pageWidth - margin * 2;
+      const contentHeight = (canvas.height * contentWidth) / canvas.width;
+      const imageData = canvas.toDataURL("image/png");
+      let remainingHeight = contentHeight;
+      let position = margin;
+
+      pdf.addImage(imageData, "PNG", margin, position, contentWidth, contentHeight);
+      remainingHeight -= pageHeight - margin * 2;
+      while (remainingHeight > 0) {
+        position = margin - (contentHeight - remainingHeight);
+        pdf.addPage();
+        pdf.addImage(imageData, "PNG", margin, position, contentWidth, contentHeight);
+        remainingHeight -= pageHeight - margin * 2;
+      }
+
+      const reportName = safePdfFileName(report.equipment_id || "report");
+      const period = safePdfFileName(report.period);
+      pdf.save(`MESTORY_${reportName}_${period}.pdf`);
+    } catch (cause) {
+      console.error("PDF 생성 실패", cause);
+      setPdfError("PDF를 생성하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setPdfGenerating(false);
+    }
+  }
+
   useEffect(() => {
     listEquipment()
       .then(setEquipment)
@@ -85,7 +140,7 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
   }, [params.id]);
 
   return (
-    <main className="page">
+    <main className="page" ref={reportContentRef}>
       <Topbar
         title={report ? reportTitle(report, equipment) : "리포트 상세"}
         subtitle={report ? `${reportScope(report, equipment)} · ${report.period}` : "불러오는 중..."}
@@ -103,8 +158,8 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
               <button type="button" className="secondary-button no-print" onClick={() => downloadCsv(report)}>
                 <IconDownload /> 엑셀 다운로드
               </button>
-              <button type="button" className="primary-button-inline no-print" onClick={() => window.print()}>
-                <IconReport /> PDF로 저장
+              <button type="button" className="primary-button-inline no-print" onClick={handleDownloadPdf} disabled={pdfGenerating}>
+                <IconReport /> {pdfGenerating ? "PDF 생성 중..." : "PDF로 저장"}
               </button>
             </div>
           ) : undefined
@@ -129,6 +184,8 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
           )}
         </section>
       )}
+
+      {!loading && pdfError && <p className="form-error no-print" role="alert">{pdfError}</p>}
 
       {!loading && !error && report && (
         <>
