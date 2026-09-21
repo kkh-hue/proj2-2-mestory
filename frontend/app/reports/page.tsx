@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import ReportListCard from "../../components/ReportListCard";
 import Topbar from "../../components/Topbar";
 import { IconChevronDown, IconChevronRight, IconPlus, IconReport, IconSearch } from "../../components/icons";
-import { listEquipment, listReports } from "../../lib/api";
+import { listEquipment, listReports, ReportApiError } from "../../lib/api";
 import { reportScope } from "../../lib/labels";
 import type { EquipmentSummaryItem } from "../../types/equipment";
 import type { ReportSummary } from "../../types/report";
@@ -18,6 +18,16 @@ function formatShortDate(iso: string) {
   return `${date.getMonth() + 1}.${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes(),
   ).padStart(2, "0")}`;
+}
+
+function reportsErrorMessage(cause: unknown): string {
+  if (cause instanceof ReportApiError) {
+    return "리포트를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  if (cause instanceof Error && cause.message.includes("10초")) {
+    return "리포트를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  return "네트워크 연결을 확인해 주세요.\n다시 시도해 주세요.";
 }
 
 export default function ReportsPage() {
@@ -30,10 +40,10 @@ export default function ReportsPage() {
   useEffect(() => {
     listEquipment()
       .then(setEquipment)
-      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
+      .catch((cause) => setEquipmentError(reportsErrorMessage(cause)));
     listReports()
       .then(setReports)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
+      .catch((cause) => setError(reportsErrorMessage(cause)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -77,8 +87,7 @@ export default function ReportsPage() {
       )}
       {!loading && (error || equipmentError) && (
         <section className="status-card status-error" role="alert">
-          <strong>리포트를 불러오지 못했습니다.</strong>
-          <span>{error || equipmentError}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{error || equipmentError}</span>
         </section>
       )}
 
