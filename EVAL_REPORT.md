@@ -110,19 +110,24 @@
 | `skill-before` | 옛 SKILL.md | 1.000 | 1.000 | 0.850 | 1.000 |
 | `skill-before-rerun` | **같은 코드 재측정** (노이즈 기준선) | 1.000 | 1.000 | 0.783 | 0.883 |
 | `baseline2` | 새 SKILL.md (0건 처리 규칙 추가) | 1.000 | 1.000 | 0.800 | 0.933 |
+| `gpt41mini` | **모델만 `openai/gpt-4.1-mini`로 교체** (SKILL.md는 `baseline2`와 같음) | 1.000 | 1.000 | **0.667** | **0.767** |
 
-멀티모달 10건은 `skill-before`·`baseline2` 모두 `visual_extraction 1.000 / contract 1.000`
-(gpt-5-mini. 4장의 gpt-4o-mini 기준 0.900 / 0.975와는 모델이 달라 직접 비교하지 않는다).
+위 세 줄(`skill-before` · `skill-before-rerun` · `baseline2`)의 생성 모델은 `gpt-5-mini`, 마지막 줄만 `gpt-4.1-mini`이다. 모델만 바꿨으므로
+차이는 모델에서 온다 — `judge_match`가 0.667로 `gpt-5-mini`의 노이즈 범위(0.783~0.850)보다 낮고, `judge_honesty`도 0.767로
+범위(0.883~1.000) 밖이다. 다만 **1회 측정**이라 참고값으로만 본다(비교는 5장).
 
-![Langfuse Experiments — 멀티모달 10건 3회차의 점수·지연·비용](docs/images/langfuse-eval-06-experiments-mm.png)
+멀티모달 10건은 `skill-before`·`baseline2`(gpt-5-mini)와 `gpt41mini`(gpt-4.1-mini) 모두 `visual_extraction 1.000 / contract 1.000`이다
+(4장의 gpt-4o-mini 기준 0.900 / 0.975와는 모델이 달라 직접 비교하지 않는다).
 
-*Datasets → `멀티모달 10건 평가셋` → Experiments. 회차당(10건) 비용은 $0.052~$0.056, 평균 지연은 21.0~25.3s이다. `baseline-mm`의 `contract 0.90`은 모델이 틀린 것이 아니라 MM-05가 라인 불일치로 거절된 **측정 도구 문제**였고(3-1장의 3번), 고친 뒤 `baseline2-mm`·`skill-before-mm`은 둘 다 `contract 1.00 / visual_extraction 1.00`이다.*
+![Langfuse Experiments — 멀티모달 10건 4회차의 점수·지연·비용](docs/images/langfuse-eval-06-experiments-mm.png)
+
+*Datasets → `멀티모달 10건 평가셋` → Experiments. 회차당(10건) 비용은 gpt-5-mini가 $0.052~$0.056, 평균 지연 21.0~25.3s이고, `gpt41mini-mm`(gpt-4.1-mini)은 $0.044, 16.2s이다. `baseline-mm`의 `contract 0.90`은 모델이 틀린 것이 아니라 MM-05가 라인 불일치로 거절된 **측정 도구 문제**였고(3-1장의 3번), 고친 뒤 `baseline2-mm`·`skill-before-mm`·`gpt41mini-mm`은 모두 `contract 1.00 / visual_extraction 1.00`이다.*
 
 **Langfuse 화면** — Datasets → `30개 이상 데이터셋` → Experiments. 회차별 평균 점수·지연·비용이 표로 나온다.
 
-![Langfuse Experiments — 텍스트 30건 4회차의 점수·지연·비용](docs/images/langfuse-eval-04-experiments.png)
+![Langfuse Experiments — 텍스트 30건 5회차의 점수·지연·비용](docs/images/langfuse-eval-04-experiments.png)
 
-*회차당(30건) 비용은 $0.116~$0.153, 평균 지연은 17.4~19.8s이다(동시 3건 실행 기준이라 단건 지연보다 길다). 판정 모델 호출 비용은 이 화면에 포함되지 않는다. 점수는 위 표의 값과 같다. `baseline-text`의 `id_grounding` 칸이 빈 것은 그 회차에 이 축이 없었기 때문이다.*
+*회차당(30건) 비용은 gpt-5-mini 회차가 $0.116~$0.153, 평균 지연 17.4~19.8s이고, 맨 위의 `gpt41mini-text`(gpt-4.1-mini)는 $0.102, 14.1s이다(동시 3건 실행 기준이라 단건 지연보다 길다). 회차 이름에는 모델이 없으므로 위 표의 "코드" 칸이 모델을 알려 준다. 판정 모델 호출 비용은 이 화면에 포함되지 않는다. 점수는 위 표의 값과 같다. `baseline-text`의 `id_grounding` 칸이 빈 것은 그 회차에 이 축이 없었기 때문이다.*
 
 **낮은 점수의 내용** (`baseline2` 기준, 30건 중 7건은 서버가 422로 거절):
 
@@ -363,15 +368,33 @@ MM-06은 정확히 이 혼동을 잡으라고 만든 케이스인데, **제 수�
 > 이 장은 2026-09-21에 실제 채택 상태에 맞게 고쳤다. 처음에는 `gpt-4o-mini`를 채택했으나 교육과정 보안 정책(ZDR)
 > 때문에 쓸 수 없게 되어 **`gpt-5-mini`로 바꿨다.** 회차별 측정값 전체는 `evals/EVAL_REPORT.md`에 있다.
 
-측정한 모델은 세 개이고, 못 잰 후보가 둘이다.
+측정한 모델은 **네 개**(`gpt-4o-mini` · `gpt-5-mini` · `gpt-5-nano` · `gpt-4.1-mini`)이고, 못 잰 후보가 둘이다.
+`gpt-4o-mini`는 지금 **같은 조건으로 다시 잴 수 없다 — ZDR을 켠 채로는 404가 난다**(아래).
 
 | 모델 | 품질 (visual / contract, 멀티모달 10건) | 요청당 비용 | 지연 (평균 / 최악1건) | 판단 |
 |---|---|---|---|---|
-| `openai/gpt-4o-mini` | 0.750~0.900 / 0.950~0.975 (여러 회차 범위) | 1회 측정(20호출) ≈ $0.05, 요청당은 미측정 | 7.3~13.7s / 9.2~29.1s | ❌ **폐기** — 품질·속도는 좋았으나 ZDR을 켜면 tools 지원 엔드포인트가 0개가 되어 404 |
+| `openai/gpt-4o-mini` | 0.750~0.900 / 0.950~0.975 (**교체 전에 잰 값**, 여러 회차 범위) | 1회 측정(20호출) ≈ $0.05, 요청당은 미측정 | 7.3~13.7s / 9.2~29.1s | ❌ **폐기** — 품질·속도는 좋았으나 **ZDR에서 404** (`No endpoints found matching your data policy`). 2026-09-21에 다시 호출해 같은 404를 확인 |
 | `openai/gpt-5-mini` + `effort=low` | 0.900~1.000 / 0.975~1.000 | 텍스트 **$0.003495** · 이미지 $0.004236 (Langfuse 실측) | 19.4~21.3s / 23.4~25.5s | ✅ **현행 채택** |
+| `openai/gpt-4.1-mini` (비추론) | **1.000 / 1.000** (Langfuse 1회) · 텍스트 30건 `judge_match` **0.667** · `judge_honesty` **0.767** | 텍스트 30건 회차 $0.102 (요청당 ≈ $0.0034, gpt-5-mini는 ≈ $0.0039~$0.0051) · 멀티모달 10건 $0.044 | 평균 14.1s(텍스트) · 16.2s(멀티모달) | ⏸ **보류** — 비용·지연은 낫지만 텍스트 품질(judge)이 gpt-5-mini의 범위 밖으로 낮다. **새로 잰 후보** |
 | `openai/gpt-5-nano` + `low` / `minimal` | **미측정** — 텍스트 경로를 채점할 수단이 그때 없었다 | 텍스트 $0.001838 (`low`, −47%) / **$0.000803** (`minimal`, −77%) | 개별 호출 4.5~14.9s, 텍스트 최악1건 **41.8s** | ⏸ **보류** — 재시도가 2.0~2.5배로 늘어 지연 게이트(24s)를 넘김 |
 | `inclusionai/ling-3.0-flash-vl:free` | 미측정 — 능력 확인만 통과 | 무료 (하루 50건) | — | 대안 (한도에 걸려 완주 불가) |
 | `gemini-flash-lite-latest` (Google AI Studio) | 미측정 — 에이전트 멀티턴에서 400 | 무료 | — | ❌ 불가 |
+
+**gpt-4o-mini가 404인 것을 다시 확인하고, 다른 모델을 함께 호출해 봤다** (2026-09-21, 같은 요청을 `tools` + `provider.zdr=true`로 12개 모델에 1회씩):
+
+| 결과 | 모델 (응답한 제공자) |
+|---|---|
+| ❌ **404** | `openai/gpt-4o-mini` — ZDR 조건에서 엔드포인트가 없다 |
+| ✅ 200 · 도구 호출함 | `gpt-4.1-mini` · `gpt-4.1-nano` · `gpt-5-mini` · `gpt-5-nano` (Azure), `claude-haiku-4.5` (Amazon Bedrock), `llama-3.3-70b` (AkashML), `mistral-small-3.2` (Venice), `qwen3-235b` · `deepseek-v3.1` (DeepInfra) |
+| ⚠️ 200 · 도구 호출 안 함 | `gemini-2.5-flash` · `gemini-2.5-flash-lite` (Google) |
+
+이 중 **이미지까지 다루는 서비스라 비전을 지원하는 후보인 `gpt-4.1-mini` 하나만** 골라 Langfuse에서 텍스트 30건 + 멀티모달 10건으로 실제 측정했다
+(여러 모델을 돌리면 비용이 늘어 하나로 제한했다). `claude-haiku-4.5`는 우리 채점(판정) 모델이라 생성 모델로 쓰면 자기 답을 채점하게 되어 뺐다.
+
+![Langfuse 회차 비교 — gpt-4.1-mini(기준) vs gpt-5-mini(baseline2)](docs/images/langfuse-eval-07-model-compare.png)
+
+*텍스트 30건 회차 비교(`gpt41mini-text` 대 `baseline2-text`). 머리글의 평균이 `judge_honesty` 0.77 vs 0.93, `judge_match` 0.67 vs 0.80이다.
+모델만 바꾼 비교이고 **각 1회**라, 판정 흔들림(±0.07~0.12)을 고려해 "gpt-4.1-mini가 텍스트 품질에서 뒤진다"는 경향으로만 읽는다.*
 
 **왜 `gpt-5-mini`인가**
 - 선택지가 넓지 않았다. ZDR을 끌 수 없어서, tool calling을 쓰는 이 서비스가 ZDR로 동작하려면 엔드포인트가 tools를
@@ -380,10 +403,13 @@ MM-06은 정확히 이 혼동을 잡으라고 만든 케이스인데, **제 수�
 - **품질은 오히려 좋아졌고 지연은 약 2배 나빠졌다**(평균 7.3~13.7s → 19.4~21.3s). 이 악화는 성능 튜닝 실패가
   아니라 보안 요구사항의 대가다. 그래서 지연 게이트도 다시 잡았다(`evals/EVAL_REPORT.md` 6장: 텍스트
   최악1건 ≤ 24초, 이미지 ≤ 28초).
+- **`gpt-4.1-mini`는 더 싸고 빠르지만(요청당 약 12~33% 저렴, 텍스트 평균 14.1s) 텍스트 품질이 낮았다.** 멀티모달 점수는 같고
+  (1.000 / 1.000), 텍스트 `judge_match` 0.667 · `judge_honesty` 0.767로 gpt-5-mini의 범위(0.783~0.850 · 0.883~1.000)보다 낮다.
+  1회 측정이라 확정은 아니고, 비용을 더 줄여야 할 때 재측정 대상이다.
 - **`gpt-5-nano`는 비용을 47~77% 줄이지만 채택하지 않았다.** 개별 호출은 mini의 절반 속도인데, 1차 응답에서
   스키마를 자주 놓쳐 2차 재시도가 걸리고 그 한 건이 최악1건을 41.8s로 끌어올린다. 게다가 **품질을 못 쟀다.**
   이번에 만든 Langfuse 평가 스크립트(`scripts/run_langfuse_eval.py`)로 텍스트 30건을 `MESTORY_LLM_MODEL`만 바꿔
-  돌리면 잴 수 있지만 **아직 하지 않았다** — 재시도 문제(구조화 출력으로 해결 가능성)와 함께 다음 과제다.
+  돌리면 잴 수 있지만 **비용 때문에 아직 하지 않았다** — 재시도 문제(구조화 출력으로 해결 가능성)와 함께 다음 과제다.
 
 **무료 후보 두 개를 못 잰 이유** (처음 계획은 세 모델을 같은 평가셋으로 비교하는 것이었다)
 
