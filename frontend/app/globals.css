@@ -236,8 +236,11 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 }
 @media (max-width:720px) {
   .shell { flex-direction:column; }
-  .sidebar { width:100%; height:auto; position:static; border-right:0; border-bottom:1px solid var(--line); }
-  .sidebar-nav { grid-auto-flow:column; overflow-x:auto; }
+  .sidebar { width:100%; height:auto; position:static; border-right:0; border-bottom:1px solid var(--line); overflow-x:hidden; }
+  .sidebar-nav { display:flex; flex-wrap:wrap; gap:4px; overflow-x:visible; }
+  .sidebar-nav li { flex:1 1 140px; min-width:0; }
+  .sidebar-link { min-width:0; gap:8px; padding:11px 8px; }
+  .sidebar-link span { white-space:nowrap; }
   .page { padding:24px 18px 48px; }
   .kpi-grid { grid-template-columns:1fr; }
 }
