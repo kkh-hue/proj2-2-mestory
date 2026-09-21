@@ -1,7 +1,7 @@
 """알림센터 표기·상태 일관성 규칙 — DB 없이 검증한다."""
 
 import asyncio
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -98,7 +98,11 @@ def test_설비현황_상태로_다운타임_알림을_결정하고_분석완료
     alerts = asyncio.run(db.list_alerts(as_of=day))
     by_id = {alert["id"]: alert for alert in alerts}
     assert "d.end_time >= %s" in connection.queries[0][0]
-    assert connection.queries[0][1][0].date() == day
+    # _cutoff()는 as_of가 지난 날짜면 "그 날이 끝나는 시점"(다음 날 00:00)을 쓴다.
+    # 오늘을 주면 '지금 시각'이 되므로 분기가 갈린다 — day를 고정한 이 시험에서는
+    # 앞으로 영원히 '지난 날짜'이므로 다음 날 자정이 기대값이다.
+    # (.date() == day로 두면 시험을 작성한 날에만 통과하고 다음 날부터 깨진다)
+    assert connection.queries[0][1][0] == datetime(day.year, day.month, day.day) + timedelta(days=1)
 
     assert "downtime-LOG-NORMAL" not in by_id
     assert (by_id["downtime-LOG-WARNING"]["tone"], by_id["downtime-LOG-WARNING"]["tag"]) == ("warning", "주의")
