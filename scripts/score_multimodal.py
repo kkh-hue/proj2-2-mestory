@@ -55,9 +55,9 @@ RUNS = REPO_ROOT / "evals" / "runs"        # 회차 결과 저장 위치
 from backend.services.llm import (  # noqa: E402
     AnalysisInfrastructureError,
     generate_report,
-    get_model_name,
     last_agent_steps,
     last_infra_error,
+    resolve_model_name,
 )
 from mcp_server.tools.data_loader import load_error_codes          # noqa: E402
 
@@ -237,7 +237,11 @@ def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
 def do_run(tag: str, skip_control: bool) -> dict:
     cases = load_cases()
     codes = known_codes()
-    print(f"모델 {get_model_name()} · 케이스 {len(cases)}건 · 회차 '{tag}'\n")
+    # 라우팅이 켜져 있으면 본 측정(이미지 O)과 대조군(이미지 X)이 서로 다른 모델로 간다.
+    # 같은 줄에 둘 다 찍어 둬야 나중에 결과를 볼 때 어느 모델 수치인지 헷갈리지 않는다.
+    model_vision, model_text = resolve_model_name(True), resolve_model_name(False)
+    routing = f"{model_vision} (이미지) / {model_text} (텍스트)" if model_vision != model_text else model_vision
+    print(f"모델 {routing} · 케이스 {len(cases)}건 · 회차 '{tag}'\n")
 
     scored, latencies, control = [], [], []
     unmeasured = []          # 인프라 오류로 끝내 못 잰 케이스 — 점수에서 제외한다
@@ -307,7 +311,10 @@ def do_run(tag: str, skip_control: bool) -> dict:
     summary = {
         "tag": tag,
         "when": datetime.now().isoformat(timespec="seconds"),
-        "model": get_model_name(),
+        # "model"은 기존 회차 파일과 키를 맞추려고 그대로 둔다(본 측정 = 이미지 있음).
+        # 라우팅이 켜지면 대조군은 다른 모델이므로 model_no_image를 따로 남긴다.
+        "model": model_vision,
+        "model_no_image": model_text,
         "n": len(scored),
         "unmeasured": unmeasured,   # 인프라 오류로 못 잰 케이스 — 보고서에 반드시 밝힌다
         "degraded": degraded,       # 축소 스키마로 떨어진 케이스

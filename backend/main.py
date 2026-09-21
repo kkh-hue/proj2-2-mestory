@@ -32,7 +32,13 @@ from .db import (
     list_reports,
 )
 from .scope import ScopeError, resolve_scope
-from .services.llm import AnalysisInfrastructureError, DowntimeReport, generate_report, get_model_name
+from .services.llm import (
+    AnalysisInfrastructureError,
+    DowntimeReport,
+    generate_report,
+    get_model_name,
+    resolve_model_name,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -251,9 +257,13 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
     # 토큰 사용량은 Langfuse 트레이스에서 확인한다 (이 로그에는 중복 기록하지 않음).
     # image_count를 남기는 이유: 게이트가 2줄(텍스트 10초 / 이미지 20초)이라
     # 로그만 보고 어느 기준으로 볼지 가릴 수 있어야 한다.
+    # model은 get_model_name()이 아니라 resolve_model_name()으로 찍는다.
+    # 이미지 유무에 따라 실제로 간 모델이 다르기 때문이다 — 안 고치면 텍스트 요청도
+    # vision 모델명으로 찍혀 로그가 거짓이 된다 (docs/specs/model-routing.md EC-05).
     logger.info(
         "request_id=%s report 요청 완료 model=%s elapsed_ms=%d unclassified_count=%d used_image=%s",
-        request_id, get_model_name(), elapsed_ms, report.unclassified_count, report.used_image,
+        request_id, resolve_model_name(image_count > 0), elapsed_ms,
+        report.unclassified_count, report.used_image,
     )
     return report
 
