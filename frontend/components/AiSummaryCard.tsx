@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { IconSparkle } from "./icons";
+import TruncatedTextPopover from "./TruncatedTextPopover";
 import type { SavedReport } from "../types/report";
 
 // 개별 사건 발생 건수·시간은 출력 계약에 없는 값이라 지어내지 않는다 —
@@ -55,7 +56,7 @@ export default function AiSummaryCard({ report }: { report: SavedReport | null }
           <ul>
             {report.causes.map((cause, index) => (
               <li key={`${cause.error_code}-${index}`}>
-                <span className="ai-breakdown-label" title={cause.description}>{cause.description}</span>
+                <TruncatedTextPopover className="ai-breakdown-label" text={cause.description} />
                 <span className="ai-breakdown-bar-track">
                   <span className="ai-breakdown-bar-fill" style={{ width: `${SEVERITY_WIDTH[cause.severity] ?? 12}%` }} />
                 </span>
