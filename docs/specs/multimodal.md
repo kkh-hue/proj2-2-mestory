@@ -1,9 +1,11 @@
 # Spec — 멀티모달 입력 (이미지 첨부 원인 분석)
 
-- 담당: 박민영 · 상태: **검증 완료, 구현 대기 (팀 합의 필요)**
-- 코드: `backend/services/llm.py`, `backend/main.py`, `frontend/components/ChatInput.tsx`, `frontend/lib/api.ts`, `frontend/types/report.ts`
+- 담당: 박민영 · 상태: **구현 완료** (백엔드 `1da36a0`, 프론트 PR #87·#88)
+- 코드: `backend/services/llm.py`, `backend/main.py`, `frontend/app/downtime/ai/page.tsx`, `frontend/types/report.ts`
 - 근거: 2차 프로젝트 가이드 21쪽 가산점 — **멀티모달 확장 +5** (*"이미지·음성 등 텍스트 외 입력을 실제 기능으로 통합"*)
-- ⚠️ `llm.py`·`main.py`는 홍민하 님 파일, `frontend/`는 강경희 님 파일 → **이 Spec으로 합의 후 구현**
+- ✅ `llm.py`·`main.py`(홍민하 님), `frontend/`(강경희 님) 모두 이 Spec으로 합의 후 구현·머지 완료
+- 측정 결과: **`evals/EVAL_REPORT.md`** — 이미지 기여도 **+0.400~+0.500** 실측
+  (이미지 있음 `visual_extraction` 0.900~1.000 vs 없음 0.500)
 
 ## Why
 
@@ -42,7 +44,8 @@
   - OCR 라이브러리 도입 (LLM의 vision 능력만 사용)
   - 이미지 저장·이력 관리 (요청 1회에만 쓰고 버린다)
   - 파인튜닝 (실행계획 D-2, 보류)
-  - `severity` 타입의 프론트 불일치 수정 (별건 — `types/report.ts`에 `"판정 불가"` 누락)
+  - ~~`severity` 타입의 프론트 불일치 수정~~ → 별건으로 **처리 완료**(`ed22c7f`).
+    `types/report.ts`에 `"판정 불가"`가 반영돼 배지가 색 없이 렌더링되던 문제는 해결됐다
 
 ## What
 
@@ -165,6 +168,14 @@ await executor.ainvoke({
 → `scripts/make_hmi_images.py`로 **우리 데이터를 박은 HMI 알람 화면을 생성**한다. 정답을 처음부터 알고 있으므로 채점이 명확하다. 저해상도·기울임·흐림 버전도 같은 스크립트로 만들어 실패 유도 케이스로 쓴다.
 
 ## AC (Given-When-Then)
+
+**검증 상태 (2026-09-21)**
+
+| AC | 검증 방법 | 상태 |
+|---|---|---|
+| AC-01 ~ AC-04 | `tests/test_multimodal.py` (pytest) | ✅ 통과 |
+| AC-05 ~ AC-08 | `scripts/score_multimodal.py` — 실제 LLM 호출이 필요해 pytest로 못 잰다. 평가셋 `MM-01`~`MM-10`이 대응 | ✅ 실측 (`evals/EVAL_REPORT.md`) |
+| AC-09 ~ AC-11 | `tests/test_multimodal.py` (pytest) | ✅ 통과 |
 
 **AC-01 · 이미지가 프롬프트를 통과한다**
 - GIVEN: `MessagesPlaceholder("input")`을 쓴 프롬프트
