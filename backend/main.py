@@ -31,6 +31,12 @@ from .db import (
     list_equipment_status,
     list_reports,
 )
+from .report_email import (
+    ReportEmailError,
+    is_allowed_recipient,
+    render_report_email,
+    send_email,
+)
 from .scope import ScopeError, resolve_scope
 from .services.llm import (
     AnalysisInfrastructureError,
@@ -298,6 +304,73 @@ async def get_reports(limit: int = 50) -> list[dict]:
         return await list_reports(limit)
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+# ─────────────────────────────────────────────
+# 리포트 메일 발송 (docs/specs/report-email.md)
+# ─────────────────────────────────────────────
+# 메일 주소 형식 검사. email-validator 패키지를 쓰지 않고 정규식으로 하는 이유:
+#   의존성을 늘리지 않는 것이 이 팀 방식이고, 위 날짜 검증도 같은 방식이다.
+#   완벽한 주소 검증은 애초에 불가능하다(RFC 5322는 매우 복잡하다).
+#   진짜 방어선은 허용 목록이므로, 여기서는 명백히 주소가 아닌 값만 걸러 내면 된다.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class ReportEmailRequest(BaseModel):
+    """받는 사람 주소 하나만 받는다.
+
+    리포트 내용을 요청에 담지 않는 이유:
+      화면이 보낸 내용을 그대로 메일에 넣으면, 누구나 요청을 조작해 아무 내용이나 담은 메일을
+      우리 도메인 이름으로 보낼 수 있다. 서버는 report_id만 받고 내용은 스스로 조회한다.
+    """
+
+    to: str = Field(description="받는 사람 메일 주소 (서버 허용 목록에 있어야 한다)")
+
+    @field_validator("to")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        address = (value or "").strip()
+        if not _EMAIL_RE.match(address):
+            # 여기서 ValueError를 던지면 FastAPI가 HTTP 422로 바꿔 준다 (Spec AC-04).
+            raise ValueError("메일 주소 형식이 아닙니다.")
+        return address
+
+
+@app.post("/reports/{report_id}/email")
+async def send_report_email(report_id: str, request: ReportEmailRequest) -> dict:
+    """저장된 리포트를 지정한 주소로 메일 발송한다 (docs/specs/report-email.md).
+
+    검사 순서가 중요하다 — 허용 목록을 DB 조회보다 먼저 본다.
+      반대로 하면 허용되지 않은 주소로 요청했을 때도 "그 리포트가 있는지 없는지"를
+      404/403으로 구분해 알려주게 된다. 먼저 막으면 그 정보가 새지 않는다.
+    """
+    # ① 허용 목록 (Spec AC-02·AC-05). 목록이 비어 있으면 여기서 전부 막힌다.
+    if not is_allowed_recipient(request.to):
+        logger.warning("허용되지 않은 수신 주소로 메일 요청이 들어왔습니다 (report_id=%s)", report_id)
+        raise HTTPException(status_code=403, detail="허용되지 않은 수신 주소입니다")
+
+    # ② 리포트 조회 (Spec AC-03). 화면이 보낸 내용이 아니라 DB에서 직접 꺼낸다.
+    try:
+        report = await get_report(report_id)
+    except DatabaseUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if report is None:
+        raise HTTPException(status_code=404, detail="리포트를 찾을 수 없습니다")
+
+    # ③ 본문 만들기 (Spec AC-06). 링크의 앞부분은 환경변수로 받는다.
+    base_url = os.getenv("FRONTEND_BASE_URL", "").strip()
+    html_body, text_body = render_report_email(report, base_url)
+    subject = f"[MESTORY] {report.get('equipment_id') or '전체 설비'} 정지 원인 분석 리포트"
+
+    # ④ 발송 (Spec AC-07). 실패해도 예외가 밖으로 새지 않게 502로 바꾼다.
+    try:
+        await send_email(to=request.to, subject=subject, html=html_body, text=text_body)
+    except ReportEmailError as exc:
+        logger.warning("메일 발송 실패 (report_id=%s): %s", report_id, exc)
+        raise HTTPException(status_code=502, detail="메일을 보내지 못했습니다") from exc
+
+    logger.info("리포트 메일 발송 완료 (report_id=%s)", report_id)
+    return {"ok": True, "to": request.to}
 
 
 @app.get("/reports/{report_id}")
