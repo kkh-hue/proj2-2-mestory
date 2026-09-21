@@ -91,7 +91,7 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
         subtitle={report ? `${reportScope(report, equipment)} · ${report.period}` : "불러오는 중..."}
         action={
           report ? (
-            <>
+            <div className="report-detail-actions">
               <button
                 type="button"
                 className="secondary-button no-print"
@@ -106,7 +106,7 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
               <button type="button" className="primary-button-inline no-print" onClick={() => window.print()}>
                 <IconReport /> PDF로 저장
               </button>
-            </>
+            </div>
           ) : undefined
         }
       />
