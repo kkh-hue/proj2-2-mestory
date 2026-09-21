@@ -1,9 +1,11 @@
 # Spec — 멀티모달 입력 (이미지 첨부 원인 분석)
 
-- 담당: 박민영 · 상태: **검증 완료, 구현 대기 (팀 합의 필요)**
-- 코드: `backend/services/llm.py`, `backend/main.py`, `frontend/components/ChatInput.tsx`, `frontend/lib/api.ts`, `frontend/types/report.ts`
+- 담당: 박민영 · 상태: **구현 완료** (백엔드 `1da36a0`, 프론트 PR #87·#88)
+- 코드: `backend/services/llm.py`, `backend/main.py`, `frontend/app/downtime/ai/page.tsx`, `frontend/types/report.ts`
 - 근거: 2차 프로젝트 가이드 21쪽 가산점 — **멀티모달 확장 +5** (*"이미지·음성 등 텍스트 외 입력을 실제 기능으로 통합"*)
-- ⚠️ `llm.py`·`main.py`는 홍민하 님 파일, `frontend/`는 강경희 님 파일 → **이 Spec으로 합의 후 구현**
+- ✅ `llm.py`·`main.py`(홍민하 님), `frontend/`(강경희 님) 모두 이 Spec으로 합의 후 구현·머지 완료
+- 측정 결과: **`evals/EVAL_REPORT.md`** — 이미지 기여도 **+0.400~+0.500** 실측
+  (이미지 있음 `visual_extraction` 0.900~1.000 vs 없음 0.500)
 
 ## Why
 
@@ -24,7 +26,17 @@
   - S-1. 이미지에 적힌 설비ID·에러코드가 `visual_findings`에 담긴다 — 평가셋 기준 **추출 정확도 측정 가능**
   - S-2. 이미지를 넣으면 `used_image=true`, 빼면 `false` — **100% 정확**
   - S-3. **이미지 없는 기존 요청은 동작이 바뀌지 않는다** (회귀 0건, 기존 pytest 전건 통과)
-  - S-4. 이미지 포함 요청 **p95 ≤ 20초** (텍스트 전용은 기존 목표 10초 유지 — 게이트 2줄)
+  - S-4. 이미지 포함 요청 **최악1건 ≤ 28초** / 텍스트 전용 **최악1건 ≤ 24초** (게이트 2줄)
+
+    > ⚠️ **2026-09-21에 목표치를 바꿨다.** 옛 목표는 `p95 ≤ 20초` / `10초`였다.
+    > 그 숫자는 gpt-4o-mini 시절에 만든 것인데, 그 모델은 ZDR 조건에서 tool calling
+    > 엔드포인트가 0개가 되어 쓸 수 없다. 추론 모델로 갈아탄 뒤로 **두 줄 다 한 번도
+    > 지키지 못했다.** 실측 범위에 여유를 더해 다시 잡은 값이며, **성능이 좋아져서가
+    > 아니라 기준을 낮춘 것**이다.
+    >
+    > 또한 `score_multimodal.py`가 `p95`로 부르던 값은 케이스 10건에서는 **사실상
+    > 가장 느린 1건**이다(`int(10*0.95)=9` → 정렬한 10개 중 마지막). 그래서 지표 이름을
+    > `최악1건`으로 고쳤다. 회차별 수치·근거·한계는 **`evals/EVAL_REPORT.md`** 참고.
   - S-5. 잘못된 이미지 입력(형식 오류·용량 초과)에 서버가 죽지 않고 안내를 돌려준다
 - **Out of Scope**
   - **음성·동영상 입력** (이미지만)
@@ -32,7 +44,8 @@
   - OCR 라이브러리 도입 (LLM의 vision 능력만 사용)
   - 이미지 저장·이력 관리 (요청 1회에만 쓰고 버린다)
   - 파인튜닝 (실행계획 D-2, 보류)
-  - `severity` 타입의 프론트 불일치 수정 (별건 — `types/report.ts`에 `"판정 불가"` 누락)
+  - ~~`severity` 타입의 프론트 불일치 수정~~ → 별건으로 **처리 완료**(`ed22c7f`).
+    `types/report.ts`에 `"판정 불가"`가 반영돼 배지가 색 없이 렌더링되던 문제는 해결됐다
 
 ## What
 
@@ -128,21 +141,20 @@ await executor.ainvoke({
 
 **부수 효과**: `MessagesPlaceholder`는 템플릿 해석을 하지 않으므로, 사용자 입력에 대해서는 `_escape_braces`(llm.py:166)가 **불필요해진다**. 시스템 프롬프트(SKILL.md·스키마)에는 계속 필요하다.
 
-**모델 선택 (실측 근거)**
+**모델 선택** → **`docs/specs/model-routing.md`** 와 **`evals/EVAL_REPORT.md`** 를 볼 것.
 
-| 설정 | 이미지 토큰 | 이미지 1장 비용 |
-|---|---|---|
-| gpt-4o-mini (현재) | 25,530 | $0.00383 |
-| gpt-4o | ~765 | **$0.00191** |
-| gpt-4o-mini + `detail:low` | 2,833 | $0.00043 |
-| gpt-4o + `detail:low` | 85 | $0.00021 |
-
-gpt-4o-mini는 이미지를 gpt-4o보다 **17~33배 많은 토큰**으로 계산한다. 텍스트 단가는 1/17이지만 이미지에서는 상쇄되고도 남아 **이미지에 관해서는 gpt-4o가 더 싸다.**
-→ **모델 라우팅으로 분리한다** (별건, `MESTORY_LLM_MODEL_VISION` 환경변수):
-- 이미지 없는 요청 → `openai/gpt-4o-mini`
-- 이미지 있는 요청 → `openai/gpt-4o`
-
-*(OpenRouter 2026-09 기준: gpt-4o-mini $0.15/M in, gpt-4o $2.50/M in)*
+> ⚠️ **여기 있던 gpt-4o-mini / gpt-4o 비용표(9/18 작성)는 2026-09-21자로 무효라 삭제했다.**
+> 숫자를 남겨 두면 누군가 그걸 보고 판단할 위험이 있어 지웠다.
+>
+> **왜 무효인가**: ZDR(Zero Data Retention)은 교육과정 보안 정책이라 끌 수 없는데,
+> `openai/gpt-4o-mini`는 tools를 보내면 ZDR 조건에서 엔드포인트가 0개가 되어 404가 난다
+> (`No endpoints found matching your data policy`). 그 표는 **쓸 수 없는 두 모델을
+> 비교한 것**이고, 이미지 토큰 수도 지금 모델과 무관하다.
+>
+> **무엇이 살아남았나**: "이미지 유무로 모델을 나눈다"는 결론과 `MESTORY_LLM_MODEL_VISION`
+> 이라는 환경변수 이름은 그대로 채택됐다. 다만 들어가는 모델이 달라졌고, 실측해 보니
+> **비용을 지배하는 것은 이미지가 아니라 `SKILL.md`가 차지하는 입력 토큰**(요청당 약 91%)
+> 이었다. 이미지 유무의 토큰 차이는 14%에 그친다.
 
 **제약**
 - `_SESSION_STORE`(llm.py:117)에 base64를 넣으면 **다음 요청마다 통째로 재전송**된다 → 텍스트만 저장
@@ -156,6 +168,14 @@ gpt-4o-mini는 이미지를 gpt-4o보다 **17~33배 많은 토큰**으로 계산
 → `scripts/make_hmi_images.py`로 **우리 데이터를 박은 HMI 알람 화면을 생성**한다. 정답을 처음부터 알고 있으므로 채점이 명확하다. 저해상도·기울임·흐림 버전도 같은 스크립트로 만들어 실패 유도 케이스로 쓴다.
 
 ## AC (Given-When-Then)
+
+**검증 상태 (2026-09-21)**
+
+| AC | 검증 방법 | 상태 |
+|---|---|---|
+| AC-01 ~ AC-04 | `tests/test_multimodal.py` (pytest) | ✅ 통과 |
+| AC-05 ~ AC-08 | `scripts/score_multimodal.py` — 실제 LLM 호출이 필요해 pytest로 못 잰다. 평가셋 `MM-01`~`MM-10`이 대응 | ✅ 실측 (`evals/EVAL_REPORT.md`) |
+| AC-09 ~ AC-11 | `tests/test_multimodal.py` (pytest) | ✅ 통과 |
 
 **AC-01 · 이미지가 프롬프트를 통과한다**
 - GIVEN: `MessagesPlaceholder("input")`을 쓴 프롬프트

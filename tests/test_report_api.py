@@ -25,6 +25,11 @@ def api(monkeypatch):
         generator = AsyncMock(side_effect=AssertionError("LLM 호출은 모의 처리해야 합니다"))
         monkeypatch.setattr(module, "generate_report", generator)
         monkeypatch.setattr(module, "get_model_name", lambda: "test-model")
+        # 설비 마스터 조회도 모의한다. 안 하면 DB·CSV가 없는 환경에서 503이 나 422 검증까지 못 간다.
+        monkeypatch.setattr(
+            module, "_load_equipment_master",
+            AsyncMock(return_value=({"EQ-001": "LINE-A", "EQ-004": "LINE-A", "EQ-057": "LINE-C"}, {"EQ-001": "사출성형기", "EQ-004": "사출성형기", "EQ-057": "컨베이어"})),
+        )
         return module, generator
 
     return load
@@ -118,6 +123,9 @@ def test_report_contract(api, payload):
     ("date_from", "2026-99-99"),
     ("date_to", "abc"),
     ("date_from", "2026/09/20"),
+    ("date_from", "2026-02-30"),  # 형식은 맞지만 없는 날짜
+    ("date_to", "2026-9-1"),      # 0 채우기 없음
+    ("date_from", "20260901"),    # 구분자 없는 ISO 기본 형식
 ])
 def test_invalid_report_date_is_rejected_before_llm(api, field, value):
     module, generator = api()

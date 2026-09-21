@@ -1,5 +1,15 @@
 # Spec — 이미지 유무에 따른 모델 라우팅
 
+- 담당: 박민영 · 상태: **구현 완료 / 기능은 꺼둔 상태** (PR #92·#94 머지)
+- 코드: `backend/services/llm.py`(`resolve_model_name`·`_build_llm`), `backend/main.py`(완료 로그),
+  `scripts/score_multimodal.py`(회차 기록), `tests/test_model_routing.py`
+- 근거: 2차 프로젝트 가이드 가산점 — **모델 라우팅 +3** (*"비용 절감 효과를 수치로 제시"*)
+- **켜는 법**: `.env`에 `MESTORY_LLM_MODEL=openai/gpt-5-nano` +
+  `MESTORY_LLM_MODEL_VISION=openai/gpt-5-mini`. **설정하기 전까지는 기존과 똑같이 동작한다.**
+- ⚠️ **아직 켜지 않았다.** 텍스트 요청당 비용은 **−77%**(`$0.003495` → `$0.000803`)지만,
+  최악1건 지연이 **41.8초**로 게이트(24초)를 넘는다. 원인은 모델 속도가 아니라 **재시도 2.0배**다.
+  근거와 판단은 `evals/EVAL_REPORT.md` 7절.
+
 ## Why
 
 - **페르소나**: 설비 담당자. 하루 대부분의 질문은 텍스트만으로 하고, 화면 사진은 가끔 첨부한다.

@@ -97,7 +97,10 @@ class DowntimeCause(BaseModel):
     description="심각도. 사전에 없는 코드·데이터 오류 등 근거가 없으면 '판정 불가'"
     )
     evidence: str = Field(
-        description="판단 근거 — 참고한 MCP 조회 결과(에러코드 사전/정비이력 등)를 구체적으로 명시"
+        description=(
+            "판단 근거 — 참고한 MCP 조회 결과(에러코드 사전/정비이력 등)를 구체적으로 명시. "
+            "근거가 여러 개면 각 근거를 줄바꿈(\\n)으로 구분해서 적어라. 한 문단으로 붙이지 마라."
+        )
     )
     is_confirmed: bool = Field(description="확정된 판단이면 true, 잠정/추정 판단이면 false")
 
@@ -108,8 +111,22 @@ class DowntimeReport(BaseModel):
     period: str
     causes: list[DowntimeCause] = Field(default_factory=list)
     unclassified_count: int = Field(ge=0, description="미등록 코드·데이터 오류 등 판정 불가 건수")
-    confidence_note: str = Field(description="경계 케이스/불확실성, 사람 확인 필요 여부 명시")
-    recommended_action: str = Field(description="표준 권장 조치 문구 (정비팀/자재팀 등 담당 구분 포함)")
+    # 줄바꿈 규칙을 description에 적는 이유: 이 설명은 model_json_schema()로 프롬프트에
+    # 그대로 들어간다(_build_prompt). 실측에서 이 두 칸이 400~600자짜리 한 덩어리로 와서
+    # 화면에서 읽을 수 없었다 — 내용에는 이미 '1) 2) 3)' 구분이 있는데 줄바꿈이 0개였다.
+    confidence_note: str = Field(
+        description=(
+            "경계 케이스/불확실성, 사람 확인 필요 여부 명시. "
+            "짚을 점이 여러 개면 각 항목을 줄바꿈(\\n)으로 구분해라. 한 문단으로 붙이지 마라."
+        )
+    )
+    recommended_action: str = Field(
+        description=(
+            "표준 권장 조치 문구 (정비팀/자재팀 등 담당 구분 포함). "
+            "조치가 여러 개면 '1) ...' 처럼 번호를 붙이고 **항목마다 줄바꿈(\\n)으로 구분해라.** "
+            "한 문단으로 길게 붙여 쓰지 마라."
+        )
+    )
     # ── 멀티모달 (docs/specs/multimodal.md) ──
     # 이미지에서 "읽어낸 사실"만 여기에 적는다. 추론·판정은 causes로 간다.
     # 이 칸을 따로 둔 이유: 이미지 근거가 evidence 문장 속에 녹아버리면
@@ -588,12 +605,17 @@ def _extract_json(text: str) -> dict:
         )
 
     try:
-        return json.loads(candidate)
+        # strict=False인 이유: 출력 계약이 confidence_note·recommended_action·evidence에
+        # 줄바꿈을 요구하는데(위 Field description), 모델이 \n으로 이스케이프하지 않고
+        # 날것 개행을 넣으면 기본 파서는 "Invalid control character"로 거절한다.
+        # 그러면 재시도 사다리가 돌아 비용·지연이 2~3배가 된다 — 줄바꿈 하나 때문에.
+        # strict=False는 문자열 안의 제어문자를 허용할 뿐, 다른 문법 검사는 그대로다.
+        return json.loads(candidate, strict=False)
     except json.JSONDecodeError as exc:
         # 값 안의 따옴표 때문일 수 있다 — 고쳐서 한 번만 더 해본다.
         # 실패하면 원래 예외를 그대로 올려 재시도 사다리가 돌게 한다.
         try:
-            repaired = json.loads(_escape_inner_quotes(candidate))
+            repaired = json.loads(_escape_inner_quotes(candidate), strict=False)
         except json.JSONDecodeError:
             # 실패한 자리 주변을 남긴다.
             # 왜: 에러 메시지는 위치(line/column)만 알려주고 그 자리에 무엇이 있었는지는
