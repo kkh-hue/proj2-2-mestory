@@ -20,7 +20,23 @@
 | 비용 / 요청 | $0.0033 | $0.0027 | $0.0073 | $0.0187 |
 | 지연 | 10.6s | 8.1s | 26.1s | — |
 
-<!-- 대시보드 스크린샷 3장 이상. 트레이스 상세 1장 포함 -->
+**① 대시보드** — 최근 7일 트레이스 571건, 모델별 비용·토큰, 점수 5종(`contract`·`judge_match`·`judge_honesty`·`id_grounding`·`visual_extraction`)이 한 화면에 모인다.
+
+![Langfuse Home — 최근 7일 트레이스·모델별 비용·점수](docs/images/langfuse-eval-01-dashboard.png)
+
+*최근 7일 전체 기준(총 비용 $2.05: gpt-5-mini $1.26 · gpt-4o-mini $0.76 · gpt-5-nano $0.03). 앞 표의 "평균 $0.0033"은 이 중 최근 트레이스 400건만 뽑은 값이라 화면의 합계와 다르다. gpt-4o-mini 비용은 모델 교체 전 호출이다.*
+
+**② 트레이스 목록** — 요청 1건이 한 줄이다(최근 7일 418건). 지연과 성공·실패(Status)가 보이고, 실패한 호출은 `Error`로 표시된다.
+
+![Langfuse Tracing — 트레이스 목록(지연·상태·User ID·Session ID)](docs/images/langfuse-eval-02-tracing-list.png)
+
+*`User ID`는 비어 있고 `Session ID`는 일부만 채워져 있다 — 위 표의 "⚠️ 부분적"이 이 화면이다. 12:39~12:40의 `Error` 4건은 로컬 시험 중 OpenRouter 오류(ZDR 404, 크레딧 402)로 기록된 호출이다.*
+
+**③ 트레이스 상세** — 호출 트리(AGENT → LLM 호출 · 도구 3개), 입력·출력, 토큰, 비용, 지연이 한 화면에 있다.
+
+![Langfuse 트레이스 상세 — 지연 24.06s, $0.016481, 50,864 → 2,300 토큰](docs/images/langfuse-eval-03-trace-detail.png)
+
+*위 "느림의 원인" 행에서 설명한 바로 그 트레이스다. 두 번째 `ChatOpenAI` 호출이 입력 44,241토큰 · 19.44s · $0.01517로 전체의 대부분을 차지하고, 도구 3개(`get_downtime_logs` 0.34s · `get_error_code_info` 0.42s · `get_maintenance_history` 0.42s)는 합쳐도 1.2초다.*
 
 ## 2. 프롬프트 운영 (Prompt Management)
 
@@ -92,6 +108,12 @@
 
 멀티모달 10건은 `skill-before`·`baseline2` 모두 `visual_extraction 1.000 / contract 1.000`
 (gpt-5-mini. 4장의 gpt-4o-mini 기준 0.900 / 0.975와는 모델이 달라 직접 비교하지 않는다).
+
+**Langfuse 화면** — Datasets → `30개 이상 데이터셋` → Experiments. 회차별 평균 점수·지연·비용이 표로 나온다.
+
+![Langfuse Experiments — 텍스트 30건 4회차의 점수·지연·비용](docs/images/langfuse-eval-04-experiments.png)
+
+*회차당(30건) 비용은 $0.116~$0.153, 평균 지연은 17.4~19.8s이다(동시 3건 실행 기준이라 단건 지연보다 길다). 판정 모델 호출 비용은 이 화면에 포함되지 않는다. 점수는 위 표의 값과 같다. `baseline-text`의 `id_grounding` 칸이 빈 것은 그 회차에 이 축이 없었기 때문이다.*
 
 **낮은 점수의 내용** (`baseline2` 기준, 30건 중 7건은 서버가 422로 거절):
 
@@ -267,6 +289,10 @@ Python 정규식에서 **한글도 '단어 문자'** 입니다. `"X-777로 보�
 | 변경 전 vs 변경 후 (`skill-before` vs `baseline2`) | 5 | 회귀 5 · 개선 0 |
 | 같은 코드 2회 (`skill-before` vs `skill-before-rerun`, 노이즈) | **10** | — |
 | 변경 전 재측정 vs 변경 후 (`skill-before-rerun` vs `baseline2`) | 10 | — |
+
+![Langfuse 회차 비교 — skill-before-text(기준) vs baseline2-text](docs/images/langfuse-eval-05-compare.png)
+
+*Experiments에서 두 회차를 골라 Compare한 화면. 기준은 `skill-before-text`이고 항목별 입력·기대 답·출력·점수가 나란히 나온다. 머리글의 평균은 `judge_honesty` 1.00 vs 0.93, `judge_match` 0.85 vs 0.80으로 표와 같다(표시 건수를 30건 이상으로 늘려야 전체 평균이 나온다 — 기본 20건이면 일부만 평균한다).*
 
 변경 전후 차이(5개)가 **같은 코드끼리의 차이(10개)보다 작으므로 회귀라고 볼 근거가 없다.** 다만 5개가 모두 회귀 쪽이라는 점은
 마음에 걸려 남겨 둔다(E-101 반복 장애, EQ-001 정비이력 상충, MAT-401, EQ-040 주간 요약, EQ-051). 한 번 더 재서
