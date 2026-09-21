@@ -96,6 +96,7 @@
 
 - **생성 모델** `openai/gpt-5-mini`, **판정 모델** `anthropic/claude-haiku-4.5` — 서로 다른 회사 모델이다
   (같은 모델이 자기 답을 채점하면 후하게 나온다). 판정 호출도 ZDR을 켠 채 동작하는 것을 확인했다.
+- **서비스(Railway 배포판)의 모델도 `openai/gpt-5-mini`다.** 백엔드 환경변수 `MESTORY_LLM_MODEL=openai/gpt-5-mini`(`MESTORY_LLM_REASONING_EFFORT=low`)이고, 배포판에 요청을 보낸 뒤 Langfuse에서 그 호출의 모델이 `openai/gpt-5-mini`로 기록된 것을 확인했다(2026-09-21). 코드의 기본값 `openai/gpt-4o-mini`는 환경변수가 없을 때만 쓰이며 배포에는 적용되지 않는다. Langfuse 화면에 보이는 gpt-4o-mini 호출은 모델 교체 전(9/20 이전)과 로컬 시험의 것이다.
 - 멀티모달 10건은 같은 스크립트로 돌리되, 채점은 기존 규칙(`score_multimodal.py`의 `score_case`)을 그대로 쓴다.
 
 **측정 결과** (Langfuse 회차, 1건당 평균 비용 약 $0.0033 · 한 회차 약 $0.2~0.4)
