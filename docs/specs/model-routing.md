@@ -19,8 +19,8 @@
 - **성공 기준**
   1. `MESTORY_LLM_MODEL_VISION`이 없으면 **기존과 100% 동일하게 동작**한다(회귀 없음).
   2. 텍스트 요청의 입력·출력 단가가 각각 80% 낮아진다 (Azure 기준 $0.25/$2.00 → $0.05/$0.40).
-  3. 라우팅 후에도 이미지 없음 대조군의 `contract`(스키마 준수) 축이 기존 수치 아래로
-     떨어지지 않는다.
+  3. 라우팅 후에도 이미지 경로의 `contract`(스키마 준수) 축이 기존 gpt-5-mini 범위
+     (0.975~1.000) 아래로 떨어지지 않고, 텍스트 경로의 지연이 게이트를 넘지 않는다.
   4. 요청당 비용 비교표(라우팅 전/후)를 실측 토큰으로 제시한다.
 - **Out of Scope**
   - 텍스트 평가셋(`evals/dataset.jsonl` 30건) 전용 채점 스크립트 신규 작성.
@@ -105,14 +105,25 @@ MESTORY_LLM_MODEL_VISION=openai/gpt-5-mini   # 신규. 없으면 위 값을 그�
 - WHEN: `_build_llm(resolve_model_name(True))`를 부른다
 - THEN: 반환된 `ChatOpenAI`의 `model_name`이 vision 모델명과 일치한다
 
-**AC-05 · 스키마 준수가 떨어지지 않는다**
+**AC-05 · 라우팅이 품질과 지연을 망가뜨리지 않는다**
 - GIVEN: 라우팅이 켜진 상태
-- WHEN: `python scripts/score_multimodal.py --tag routed --retries 0` 을 돌린다
-- THEN: 이미지 없음 대조군의 `contract` 축이 기존 gpt-5-mini 회차(1.000) 미만으로
-  떨어지지 않는다. 떨어지면 라우팅을 되돌리고 그 사실을 EVAL_REPORT에 적는다.
+- WHEN: `scripts/score_multimodal.py --tag routed --retries 0` 을 **대조군까지 켜고**
+  (`--no-image-control` 없이) 돌린다
+- THEN: ① 이미지 경로의 `contract` 축이 기존 gpt-5-mini 범위(0.975~1.000) 아래로
+  떨어지지 않는다. ② 이미지 없음 대조군의 최악1건 지연이 `GATE_TEXT_SEC` 이내다.
+  하나라도 못 지키면 라우팅을 켜지 않고 그 사실을 `evals/EVAL_REPORT.md`에 적는다.
 
-**AC-06 · 비용 비교표가 실측 토큰으로 나온다**
+> ⚠️ 처음에 이 AC를 "대조군의 `contract` 축"으로 썼으나 **측정이 불가능했다.**
+> `score_multimodal.py`의 대조군은 `visual_extraction`과 지연만 기록하고 `contract`는
+> 재지 않는다. 그래서 텍스트 경로의 스키마 준수는 직접 못 재고, **재시도 횟수**
+> (Langfuse 트레이스 수 ÷ 케이스 수)로 간접 확인한다.
+
+**AC-06 · 비용 비교표가 실측으로 나온다**
 - GIVEN: 라우팅 전후 각각의 측정 기록
-- WHEN: 요청당 평균 입력·출력 토큰에 Azure 공시 단가를 곱한다
-- THEN: EVAL_REPORT에 "라우팅 전(전부 gpt-5-mini) vs 라우팅 후" 비교표가 남는다.
-  토큰 출처와 단가 기준일을 함께 적는다.
+- WHEN: Langfuse 트레이스에서 세션별 `total_cost` 합을 케이스 수로 나눈다
+- THEN: `evals/EVAL_REPORT.md`에 "라우팅 전(전부 gpt-5-mini) vs 라우팅 후" 비교표가
+  남는다. 측정 회차·케이스 수·재시도 배수를 함께 적는다.
+
+> ⚠️ **트레이스 평균이 아니라 요청당으로 나눠야 한다.** 재시도가 있으면 트레이스 수가
+> 케이스 수보다 많아져, 트레이스 평균을 쓰면 비용을 과소평가한다(실제로 2.5배 차이가 났다).
+> 공시 단가를 곱하는 방식도 쓰지 않는다 — 프롬프트 캐싱 때문에 실제 과금과 맞지 않는다.
