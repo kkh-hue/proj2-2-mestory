@@ -138,21 +138,20 @@ await executor.ainvoke({
 
 **부수 효과**: `MessagesPlaceholder`는 템플릿 해석을 하지 않으므로, 사용자 입력에 대해서는 `_escape_braces`(llm.py:166)가 **불필요해진다**. 시스템 프롬프트(SKILL.md·스키마)에는 계속 필요하다.
 
-**모델 선택 (실측 근거)**
+**모델 선택** → **`docs/specs/model-routing.md`** 와 **`evals/EVAL_REPORT.md`** 를 볼 것.
 
-| 설정 | 이미지 토큰 | 이미지 1장 비용 |
-|---|---|---|
-| gpt-4o-mini (현재) | 25,530 | $0.00383 |
-| gpt-4o | ~765 | **$0.00191** |
-| gpt-4o-mini + `detail:low` | 2,833 | $0.00043 |
-| gpt-4o + `detail:low` | 85 | $0.00021 |
-
-gpt-4o-mini는 이미지를 gpt-4o보다 **17~33배 많은 토큰**으로 계산한다. 텍스트 단가는 1/17이지만 이미지에서는 상쇄되고도 남아 **이미지에 관해서는 gpt-4o가 더 싸다.**
-→ **모델 라우팅으로 분리한다** (별건, `MESTORY_LLM_MODEL_VISION` 환경변수):
-- 이미지 없는 요청 → `openai/gpt-4o-mini`
-- 이미지 있는 요청 → `openai/gpt-4o`
-
-*(OpenRouter 2026-09 기준: gpt-4o-mini $0.15/M in, gpt-4o $2.50/M in)*
+> ⚠️ **여기 있던 gpt-4o-mini / gpt-4o 비용표(9/18 작성)는 2026-09-21자로 무효라 삭제했다.**
+> 숫자를 남겨 두면 누군가 그걸 보고 판단할 위험이 있어 지웠다.
+>
+> **왜 무효인가**: ZDR(Zero Data Retention)은 교육과정 보안 정책이라 끌 수 없는데,
+> `openai/gpt-4o-mini`는 tools를 보내면 ZDR 조건에서 엔드포인트가 0개가 되어 404가 난다
+> (`No endpoints found matching your data policy`). 그 표는 **쓸 수 없는 두 모델을
+> 비교한 것**이고, 이미지 토큰 수도 지금 모델과 무관하다.
+>
+> **무엇이 살아남았나**: "이미지 유무로 모델을 나눈다"는 결론과 `MESTORY_LLM_MODEL_VISION`
+> 이라는 환경변수 이름은 그대로 채택됐다. 다만 들어가는 모델이 달라졌고, 실측해 보니
+> **비용을 지배하는 것은 이미지가 아니라 `SKILL.md`가 차지하는 입력 토큰**(요청당 약 91%)
+> 이었다. 이미지 유무의 토큰 차이는 14%에 그친다.
 
 **제약**
 - `_SESSION_STORE`(llm.py:117)에 base64를 넣으면 **다음 요청마다 통째로 재전송**된다 → 텍스트만 저장
