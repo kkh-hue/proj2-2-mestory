@@ -9,7 +9,7 @@ import KpiCard, { type KpiCardData } from "../components/KpiCard";
 import NewAnalysisModal from "../components/NewAnalysisModal";
 import Topbar from "../components/Topbar";
 import TrendChart from "../components/TrendChart";
-import { getDashboard } from "../lib/api";
+import { getDashboard, ReportApiError } from "../lib/api";
 import { useLiveTick } from "../lib/useLiveTick";
 import { todayKst } from "../lib/date";
 import { lineLabel } from "../lib/labels";
@@ -53,6 +53,16 @@ function buildKpiCards(summary: DashboardSummary): KpiCardData[] {
 
 const LINE_COLORS = ["var(--chart-a)", "var(--chart-b)", "var(--chart-c)", "#c9860f", "#2f9e5b"];
 
+function dashboardErrorMessage(cause: unknown): string {
+  if (cause instanceof ReportApiError) {
+    return "대시보드 데이터를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  if (cause instanceof Error && cause.message.includes("10초")) {
+    return "대시보드 데이터를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  return "네트워크 연결을 확인해 주세요.";
+}
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,7 +85,7 @@ export default function DashboardPage() {
         loadedFor.current = asOf;
         setError("");
       })
-      .catch((cause) => !cancelled && !silent && setError(cause instanceof Error ? cause.message : "대시보드 데이터를 불러오지 못했습니다."))
+      .catch((cause) => !cancelled && !silent && setError(dashboardErrorMessage(cause)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -101,8 +111,7 @@ export default function DashboardPage() {
       )}
       {!loading && error && (
         <section className="status-card status-error" role="alert">
-          <strong>대시보드 데이터를 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{error}</span>
         </section>
       )}
 

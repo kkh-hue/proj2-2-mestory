@@ -47,6 +47,17 @@ function formatTime(iso: string) {
     .padStart(2, "0")}`;
 }
 
+function isTimeoutError(cause: unknown): boolean {
+  return cause instanceof Error && cause.message.includes("120초");
+}
+
+function readErrorMessage(label: string, cause: unknown): string {
+  if (cause instanceof ReportApiError || isTimeoutError(cause)) {
+    return `${label}\n다시 시도해 주세요.`;
+  }
+  return "네트워크 연결을 확인해 주세요.";
+}
+
 // 방금 나온 리포트를 근거로 "이어서 물어볼 만한" 질문을 만든다 — 지어낸 예시가 아니라
 // 실제 causes 값(에러코드·확정 여부)에서 뽑는다.
 function buildFollowUps(report: DowntimeReport): { label: string; question: string }[] {
@@ -137,7 +148,7 @@ export default function AiAnalysisChatPage() {
     listChatSessions()
       .then(setSessions)
       .catch((cause) => {
-        setError(cause instanceof Error ? cause.message : "세션 목록을 불러오지 못했습니다.");
+        setError(readErrorMessage("대화 목록을 불러오지 못했습니다.", cause));
       });
   }
 
@@ -155,7 +166,7 @@ export default function AiAnalysisChatPage() {
       .then((history) => isCurrent() && setTurns(history))
       .catch((cause) => {
         if (isCurrent()) {
-          setError(cause instanceof Error ? cause.message : "대화 기록을 불러오지 못했습니다.");
+          setError(readErrorMessage("대화 기록을 불러오지 못했습니다.", cause));
         }
       })
       .finally(() => isCurrent() && setHydrating(false));
@@ -194,7 +205,7 @@ export default function AiAnalysisChatPage() {
         setReviewNeeded(items.filter((item) => item.status !== "정상"));
       })
       .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "설비 상태를 불러오지 못했습니다.");
+        if (!cancelled) setError(readErrorMessage("설비 상태를 불러오지 못했습니다.", cause));
       });
     return () => {
       cancelled = true;
@@ -302,7 +313,17 @@ export default function AiAnalysisChatPage() {
         const detail = cause instanceof ReportApiError && cause.status === 422 && typeof (cause.body as { detail?: unknown })?.detail === "string"
           ? (cause.body as { detail: string }).detail
           : null;
-        setError(detail ?? (cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다."));
+        if (detail) {
+          setError(detail);
+        } else if (cause instanceof ReportApiError && cause.status === 422) {
+          setError(cause instanceof Error ? cause.message : "알 수 없는 오류가 발생했습니다.");
+        } else {
+          setError(
+            cause instanceof ReportApiError || isTimeoutError(cause)
+              ? "AI 원인분석을 완료하지 못했습니다.\n다시 시도해 주세요."
+              : "네트워크 연결을 확인해 주세요.",
+          );
+        }
       }
     } finally {
       setLoading(false);
