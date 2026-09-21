@@ -10,7 +10,7 @@ import CauseDetailTable from "../../../components/CauseDetailTable";
 import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
 import { IconDownload, IconReport } from "../../../components/icons";
-import { getReport, listEquipment } from "../../../lib/api";
+import { getReport, listEquipment, ReportApiError } from "../../../lib/api";
 import { reportScope, reportTitle } from "../../../lib/labels";
 import type { EquipmentSummaryItem } from "../../../types/equipment";
 import { downloadCsv } from "../../../lib/reportCsv";
@@ -20,6 +20,7 @@ import type { SavedReport } from "../../../types/report";
 export default function ReportDetailPage({ params }: { params: { id: string } }) {
   const [report, setReport] = useState<SavedReport | null>(null);
   const [error, setError] = useState("");
+  const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [equipment, setEquipment] = useState<EquipmentSummaryItem[]>([]);
   const [equipmentError, setEquipmentError] = useState("");
@@ -30,7 +31,14 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
       .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
     getReport(params.id)
       .then(setReport)
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다."))
+      .catch((cause) => {
+        if (cause instanceof ReportApiError && cause.status === 404) {
+          setNotFound(true);
+          setError("리포트를 찾을 수 없습니다.\n삭제되었거나 존재하지 않는 리포트입니다.");
+          return;
+        }
+        setError(cause instanceof Error ? cause.message : "리포트를 불러오지 못했습니다.");
+      })
       .finally(() => setLoading(false));
   }, [params.id]);
 
@@ -61,8 +69,14 @@ export default function ReportDetailPage({ params }: { params: { id: string } })
 
       {!loading && (error || equipmentError) && (
         <section className="status-card status-error" role="alert">
-          <strong>리포트를 불러오지 못했습니다.</strong>
-          <span>{error || equipmentError}</span>
+          {notFound ? (
+            <span style={{ whiteSpace: "pre-line" }}>{error}</span>
+          ) : (
+            <>
+              <strong>리포트를 불러오지 못했습니다.</strong>
+              <span>{error || equipmentError}</span>
+            </>
+          )}
         </section>
       )}
 
