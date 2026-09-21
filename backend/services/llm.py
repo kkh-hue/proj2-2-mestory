@@ -163,6 +163,25 @@ def get_model_name() -> str:
     return os.getenv("MESTORY_LLM_MODEL", "openai/gpt-4o-mini")
 
 
+def resolve_model_name(has_images: bool) -> str:
+    """이미지 유무로 쓸 모델을 고른다 (docs/specs/model-routing.md).
+
+    왜 나누나:
+      이미지가 없는 질문까지 vision 모델 단가를 낼 이유가 없다. 다만 아무 싼 모델이나
+      쓸 수는 없다 — 우리 서비스는 이미지가 없어도 항상 MCP 도구로 DB를 조회하므로
+      'ZDR + tool calling'을 동시에 만족하는 모델이어야 한다(아래 _openrouter_extra_body 주석).
+      openai/gpt-5-nano가 그 조건을 통과했고 단가는 gpt-5-mini의 1/5이다.
+
+    MESTORY_LLM_MODEL_VISION을 설정하지 않으면 이미지가 있든 없든 MESTORY_LLM_MODEL
+    하나만 쓴다 — 즉 이 변수를 두지 않으면 기존과 똑같이 동작한다(회귀 없음).
+    """
+    if not has_images:
+        return get_model_name()
+    # 키만 남기고 값을 비워 둔 .env를 '설정 안 함'과 같게 취급한다.
+    vision_model = os.getenv("MESTORY_LLM_MODEL_VISION", "").strip()
+    return vision_model or get_model_name()
+
+
 # LLM 제공자(provider)를 .env로 갈아끼울 수 있게 해 둔다.
 # 기본값은 OpenRouter — 아무것도 설정 안 하면 기존과 똑같이 동작한다.
 #
@@ -292,7 +311,9 @@ def _openrouter_extra_body() -> dict | None:
     return body or None
 
 
-def _build_llm() -> ChatOpenAI:
+def _build_llm(model: str | None = None) -> ChatOpenAI:
+    # model을 주지 않으면 기존처럼 MESTORY_LLM_MODEL 하나만 본다.
+    # 라우팅을 쓰는 쪽(generate_report)만 resolve_model_name()의 결과를 넘긴다.
     # MESTORY_LLM_API_KEY가 있으면 그걸 쓰고, 없으면 기존 OPENROUTER_API_KEY를 쓴다
     # (기존 설정 그대로 두고도 돌아가게).
     _install_tool_call_passthrough()
@@ -302,7 +323,7 @@ def _build_llm() -> ChatOpenAI:
             "LLM API 키가 없습니다 — MESTORY_LLM_API_KEY 또는 OPENROUTER_API_KEY를 .env에 설정하세요"
         )
     return ChatOpenAI(
-        model=get_model_name(),
+        model=model or get_model_name(),
         api_key=api_key,
         base_url=get_base_url(),
         temperature=0,
@@ -828,7 +849,9 @@ async def generate_report(
                 if not tools:
                     logger.warning("MCP 서버에 등록된 도구가 없습니다 (mcp_server/server.py 구현 대기 중)")
 
-                llm = _build_llm()
+                # has_images는 이 함수 위쪽에서 이미 정해 뒀다(= bool(images)).
+                # 이미지가 있으면 vision 모델, 없으면 기본(=더 싼) 모델로 간다.
+                llm = _build_llm(resolve_model_name(has_images))
                 report = await _generate_with_retries(
                     tools, llm, run_config, user_messages, chat_history, equipment_label, line_label, period
                 )
