@@ -178,6 +178,13 @@ def score_case(case: dict, report, codes: set[str]) -> dict:
 RETRIES = 2        # --retries 로 덮어쓴다
 RETRY_WAIT = 130   # --retry-wait 로 덮어쓴다 (402의 Retry-After가 120초였다)
 
+# 지연 게이트. 옛 목표는 텍스트 10초 / 이미지 20초였는데, 그건 gpt-4o-mini 시절 숫자다.
+# 보안 정책(ZDR) 때문에 tool calling과 ZDR을 동시에 만족하는 추론 모델로 갈아타면서
+# 지연이 늘었고, 두 줄 다 지킬 수 없게 됐다. 그래서 실측 범위에 여유를 더해 다시 잡았다.
+# 근거와 회차별 수치는 evals/EVAL_REPORT.md 에 있다.
+GATE_TEXT_SEC = 24     # 실측 20.3초(gpt-5-mini, 1회) + 여유. 측정 회차가 1회뿐이라 근거가 얇다.
+GATE_IMAGE_SEC = 28    # 실측 23.4~25.8초(6회) + 여유.
+
 
 def run_case(case: dict, with_image: bool, *, tag: str = "adhoc",
              retries: int = RETRIES, wait_sec: int = RETRY_WAIT):
@@ -303,6 +310,13 @@ def do_run(tag: str, skip_control: bool) -> dict:
         return round(statistics.mean(xs), 4) if xs else 0.0
 
     def p95(xs):
+        """⚠️ 케이스가 10건이면 이 값은 p95가 아니라 '가장 느린 1건'이다.
+
+        int(10 * 0.95) = 9 → 정렬한 10개 중 마지막 = 최댓값이 나온다.
+        진짜 p95를 보려면 케이스를 늘려야 한다(20건이면 19번째, 30건이면 28번째).
+        JSON 키 이름은 기존 회차 파일과 맞추려고 p95로 두고, 사람이 읽는 출력에서만
+        '최악1건'이라고 부른다 — 이름을 속이면 게이트 숫자를 잘못 읽게 된다.
+        """
         if not xs:
             return 0.0
         s = sorted(xs)
@@ -345,14 +359,14 @@ def do_run(tag: str, skip_control: bool) -> dict:
         print(f"\n  ⚠️  측정 불가 {len(summary['unmeasured'])}건: {', '.join(summary['unmeasured'])}")
         print("      인프라 오류(폴백)로 점수에서 제외했다. 모델 실패가 아니다.")
         print("      → 이 상태의 점수는 보고서에 쓰지 말고, 전건 측정 후 다시 재라.")
-    print(f"  지연 평균/p95      : {summary['latency']['mean']:.1f}s / {summary['latency']['p95']:.1f}s")
+    print(f"  지연 평균/최악1건   : {summary['latency']['mean']:.1f}s / {summary['latency']['p95']:.1f}s")
     if control:
         c = summary["control_no_image"]
         gap = summary["axes"]["visual_extraction"] - c["visual_extraction"]
         print(f"\n  [이미지 기여] 이미지 있음 {summary['axes']['visual_extraction']:.3f} "
               f"vs 없음 {c['visual_extraction']:.3f}  → 차이 {gap:+.3f}")
-        print(f"  [게이트] 텍스트 p95 {c['p95']:.1f}s (목표 10s) / "
-              f"이미지 p95 {summary['latency']['p95']:.1f}s (목표 20s)")
+        print(f"  [게이트] 텍스트 최악1건 {c['p95']:.1f}s (목표 {GATE_TEXT_SEC}s) / "
+              f"이미지 최악1건 {summary['latency']['p95']:.1f}s (목표 {GATE_IMAGE_SEC}s)")
     slow = sorted((r for r in summary["cases"]), key=lambda r: -r["elapsed_sec"])[:3]
     if slow:
         print("\n  [느린 케이스 3건]  지연 / 도구호출")
@@ -374,7 +388,7 @@ def do_compare(before: str, after: str) -> None:
     for axis in ("visual_extraction", "contract"):
         x, y = a["axes"][axis], b["axes"][axis]
         print(f"  {axis:18s} {x:10.3f} → {y:10.3f}   {y - x:+.3f}")
-    print(f"  {'p95(초)':18s} {a['latency']['p95']:10.1f} → {b['latency']['p95']:10.1f}   "
+    print(f"  {'최악1건(초)':18s} {a['latency']['p95']:10.1f} → {b['latency']['p95']:10.1f}   "
           f"{b['latency']['p95'] - a['latency']['p95']:+.1f}")
 
     a_case = {c["id"]: c for c in a["cases"]}
