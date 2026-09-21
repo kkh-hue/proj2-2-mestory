@@ -93,19 +93,21 @@ def test_AC02_load_chat_history_결과에_data_image가_없다(monkeypatch):
 # ─────────────────────────────────────────────
 # AC-03 · 저장되는 이미지가 충분히 작다
 # ─────────────────────────────────────────────
-def test_AC03_썸네일이_200KB_이하이고_유효한_data_url이다():
+def test_AC03_썸네일이_250KB_이하이고_유효한_data_url이다():
     original = make_data_url(4000, 3000)
     thumbnail = to_thumbnail(original)
 
     assert thumbnail is not None
     assert thumbnail.startswith("data:image/")
     assert len(thumbnail) < len(original)
-    assert len(thumbnail) / 1024 <= 200
+    # 기준이 200KB에서 250KB로 올라간 이유: 512px로는 첨부한 HMI 화면의 글씨를 읽을 수 없어
+    # 해상도를 1024로 올렸다. 노이즈가 많은 최악 조건 사진에서 227KB가 나온다.
+    assert len(thumbnail) / 1024 <= 250
 
     # 실제로 열리는 이미지인지 — 형식만 맞고 내용이 깨졌으면 화면에서 깨져 보인다
     payload = base64.b64decode(thumbnail.split(",", 1)[1])
     with Image.open(io.BytesIO(payload)) as reopened:
-        assert max(reopened.size) <= 512
+        assert max(reopened.size) <= 1024
 
 
 def test_AC03_작은_이미지는_확대하지_않는다():
