@@ -18,6 +18,7 @@ import { ReportApiError, createReportWithId, getChatHistory, listChatSessions, l
 import { todayKst } from "../../../lib/date";
 import { useLiveTick } from "../../../lib/useLiveTick";
 import { reportScope } from "../../../lib/labels";
+import { splitSentences } from "../../../lib/text";
 import type { ChatSessionSummary, ChatTurn, DowntimeReport, SavedReport } from "../../../types/report";
 import type { EquipmentSummaryItem } from "../../../types/equipment";
 
@@ -404,13 +405,18 @@ export default function AiAnalysisChatPage() {
                       <IconRobot />
                     </span>
                     <div className="ai-bubble ai-bubble-answer">
-                      <p className="ai-answer-headline">{turn.content}</p>
+                      {/* 답변 요약도 여러 문장이 한 덩어리로 온다 — 문장마다 끊어 그린다 */}
+                      <div className="ai-answer-headline">
+                        {splitSentences(turn.content).map((line, lineIndex) => (
+                          <p key={lineIndex}>{line}</p>
+                        ))}
+                      </div>
                       {turn.report && (
                         <dl className="ai-answer-details">
                           {/* 이미지를 올린 사람이 가장 먼저 확인하려는 값이라 맨 앞에 둔다.
                               읽어낸 것이 없으면 빈 칸을 남기지 않고 행 자체를 그리지 않는다. */}
                           {turn.report.used_image && turn.report.visual_findings && turn.report.visual_findings.length > 0 && (
-                            <div className="ai-answer-row">
+                            <div className="ai-answer-row ai-answer-row-block">
                               <dt>이미지에서 확인한 것</dt>
                               <dd>
                                 <ul className="ai-visual-findings">
@@ -429,9 +435,16 @@ export default function AiAnalysisChatPage() {
                             <dt>라인 · 설비</dt>
                             <dd>{reportScope(turn.report, allEquipment)}</dd>
                           </div>
-                          <div className="ai-answer-row">
+                          {/* 값이 수백 자라 가로 배치·오른쪽 정렬로는 읽을 수 없다 — 세로로 내린다 */}
+                          <div className="ai-answer-row ai-answer-row-block">
                             <dt>분석 참고 사항</dt>
-                            <dd>{turn.report.confidence_note}</dd>
+                            <dd>
+                              <ul className="panel-lines">
+                                {splitSentences(turn.report.confidence_note).map((line, lineIndex) => (
+                                  <li key={lineIndex}>{line}</li>
+                                ))}
+                              </ul>
+                            </dd>
                           </div>
                         </dl>
                       )}
