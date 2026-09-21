@@ -8,7 +8,7 @@ import NewAnalysisModal from "../../components/NewAnalysisModal";
 import EquipmentBoard from "../../components/EquipmentBoard";
 import Topbar from "../../components/Topbar";
 import { IconCheck, IconReport, IconStopCircle, IconTriangleWarning } from "../../components/icons";
-import { listEquipment } from "../../lib/api";
+import { listEquipment, ReportApiError } from "../../lib/api";
 import { useLiveTick } from "../../lib/useLiveTick";
 import { useNowTick } from "../../lib/useNowTick";
 import { todayKst } from "../../lib/date";
@@ -18,6 +18,16 @@ function formatKstClock(date: Date): string {
   return new Intl.DateTimeFormat("ko-KR", {
     timeZone: "Asia/Seoul", hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit",
   }).format(date);
+}
+
+function equipmentErrorMessage(cause: unknown): string {
+  if (cause instanceof ReportApiError) {
+    return "설비 정보를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  if (cause instanceof Error && cause.message.includes("10초")) {
+    return "설비 정보를 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  return "네트워크 연결을 확인해 주세요.";
 }
 
 export default function EquipmentPage() {
@@ -45,7 +55,7 @@ export default function EquipmentPage() {
         loadedFor.current = asOf;
         setError("");
       })
-      .catch((cause) => !cancelled && !silent && setError(cause instanceof Error ? cause.message : "설비 정보를 불러오지 못했습니다."))
+      .catch((cause) => !cancelled && !silent && setError(equipmentErrorMessage(cause)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -100,8 +110,7 @@ export default function EquipmentPage() {
       )}
       {!loading && error && (
         <section className="status-card status-error" role="alert">
-          <strong>설비 정보를 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{error}</span>
         </section>
       )}
 
