@@ -152,6 +152,10 @@ export function IconDownload(props: SVGProps<SVGSVGElement>) {
   return <svg {...base(props)}><path d="M12 3.5v11.5M8 11l4 4 4-4" /><path d="M4.5 18.5v1a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1v-1" /></svg>;
 }
 
+export function IconMail(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 7 8.5 6 8.5-6" /></svg>;
+}
+
 export function IconMoreHorizontal(props: SVGProps<SVGSVGElement>) {
   return <svg {...base({ strokeLinecap: "round" as const, ...props })}><circle cx="6.5" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.1" fill="currentColor" stroke="none" /><circle cx="17.5" cy="12" r="1.1" fill="currentColor" stroke="none" /></svg>;
 }
