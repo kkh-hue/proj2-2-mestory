@@ -27,7 +27,7 @@ function reportsErrorMessage(cause: unknown): string {
   if (cause instanceof Error && cause.message.includes("10초")) {
     return "리포트를 불러오지 못했습니다.\n다시 시도해 주세요.";
   }
-  return "네트워크 연결을 확인해 주세요.\n다시 시도해 주세요.";
+  return "네트워크 연결을 확인해 주세요.";
 }
 
 export default function ReportsPage() {
