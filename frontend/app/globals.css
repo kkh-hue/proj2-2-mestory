@@ -505,7 +505,18 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-attach-remove:disabled { opacity:.45; cursor:not-allowed; }
 /* 내 말풍선 안에 보이는 첨부 사진 — 말풍선이 보라색이라 흰 테두리로 띄운다 */
 .ai-bubble-images { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.ai-bubble-images img { width:88px; height:88px; object-fit:cover; border-radius:8px; border:1px solid rgba(255,255,255,.5); }
+/* object-fit을 cover에서 contain으로 바꾼 이유: cover는 정사각형에 맞추려고 가장자리를 잘라낸다.
+   HMI 화면처럼 가로로 긴 사진은 가운데만 남아 무슨 화면인지 알아볼 수 없었다.
+   크기도 88px에서 키웠지만, 말풍선 안에서 글씨를 읽는 건 어차피 무리라 클릭하면 확대한다. */
+.ai-bubble-thumb { padding:0; border:1px solid rgba(255,255,255,.5); border-radius:8px; background:rgba(0,0,0,.12); cursor:zoom-in; line-height:0; transition:filter .15s; }
+.ai-bubble-thumb:hover { filter:brightness(1.08); }
+.ai-bubble-thumb img { width:140px; height:100px; object-fit:contain; border-radius:7px; display:block; }
+
+/* 확대 보기 — 첨부한 화면의 글씨를 읽으려면 이 경로가 사실상 유일하다 */
+.image-viewer { position:fixed; inset:0; z-index:100; background:rgba(16,20,32,.82); display:grid; place-items:center; padding:32px; border:0; cursor:zoom-out; }
+.image-viewer img { max-width:100%; max-height:100%; object-fit:contain; border-radius:10px; box-shadow:0 24px 60px rgba(0,0,0,.45); }
+.image-viewer-hint { position:fixed; left:0; right:0; bottom:18px; text-align:center; color:rgba(255,255,255,.75); font-size:12.5px; }
+@media (max-width:760px) { .ai-bubble-thumb img { width:112px; height:84px; } .image-viewer { padding:16px; } }
 /* 답변의 "이미지에서 확인한 것" 목록 — 다른 dd와 같은 오른쪽 정렬을 따른다 */
 .ai-visual-findings { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
 .ai-sidebar { display:grid; gap:18px; }
