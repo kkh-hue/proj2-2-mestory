@@ -24,7 +24,7 @@ import {
   IconShield,
   IconTriangleWarning,
 } from "../../components/icons";
-import { getDowntimeAnalysis, listEquipment } from "../../lib/api";
+import { getDowntimeAnalysis, listEquipment, ReportApiError } from "../../lib/api";
 import { todayKst } from "../../lib/date";
 import { equipmentLabel, lineLabel } from "../../lib/labels";
 import type { AnalysisCause, AnalysisStatus, DowntimeAnalysis } from "../../types/downtimeAnalysis";
@@ -43,6 +43,16 @@ const STATUS_OPTIONS: { value: AnalysisStatus; label: string }[] = [
   { value: "closed", label: "복구 완료" },
   { value: "open", label: "진행 중" },
 ];
+
+function downtimeErrorMessage(cause: unknown): string {
+  if (cause instanceof ReportApiError) {
+    return "다운타임 분석을 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  if (cause instanceof Error && cause.message.includes("10초")) {
+    return "다운타임 분석을 완료하지 못했습니다.\n다시 시도해 주세요.";
+  }
+  return "네트워크 연결을 확인해 주세요.\n다시 시도해 주세요.";
+}
 
 // 기본 기간은 KST 기준 오늘부터 6일 전까지 (UTC 기준이면 자정~09시에 하루 어긋난다).
 function defaultRange() {
@@ -99,7 +109,7 @@ function DowntimeAnalysisView() {
   useEffect(() => {
     listEquipment()
       .then(setEquipment)
-      .catch((cause) => setEquipmentError(cause instanceof Error ? cause.message : "설비 목록을 불러오지 못했습니다."));
+      .catch((cause) => setEquipmentError(downtimeErrorMessage(cause)));
   }, []);
 
   useEffect(() => {
@@ -115,7 +125,7 @@ function DowntimeAnalysisView() {
       status,
     })
       .then((result) => !cancelled && setData(result))
-      .catch((cause) => !cancelled && setError(cause instanceof Error ? cause.message : "다운타임 분석을 불러오지 못했습니다."))
+      .catch((cause) => !cancelled && setError(downtimeErrorMessage(cause)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -200,8 +210,7 @@ function DowntimeAnalysisView() {
 
       {pageError && !loading && (
         <section className="status-card status-error" role="alert">
-          <strong>다운타임 분석을 불러오지 못했습니다.</strong>
-          <span>{pageError}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{pageError}</span>
         </section>
       )}
 
