@@ -51,7 +51,7 @@ function downtimeErrorMessage(cause: unknown): string {
   if (cause instanceof Error && cause.message.includes("10초")) {
     return "다운타임 분석을 완료하지 못했습니다.\n다시 시도해 주세요.";
   }
-  return "네트워크 연결을 확인해 주세요.\n다시 시도해 주세요.";
+  return "네트워크 연결을 확인해 주세요.";
 }
 
 // 기본 기간은 KST 기준 오늘부터 6일 전까지 (UTC 기준이면 자정~09시에 하루 어긋난다).

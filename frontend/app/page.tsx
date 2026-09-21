@@ -60,7 +60,7 @@ function dashboardErrorMessage(cause: unknown): string {
   if (cause instanceof Error && cause.message.includes("10초")) {
     return "데이터를 불러오는 데 시간이 걸리고 있습니다.\n다시 시도해 주세요.";
   }
-  return "네트워크 연결을 확인해 주세요.\n다시 시도해 주세요.";
+  return "네트워크 연결을 확인해 주세요.";
 }
 
 export default function DashboardPage() {
