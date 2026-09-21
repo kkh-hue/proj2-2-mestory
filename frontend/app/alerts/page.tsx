@@ -5,10 +5,20 @@
 import { useEffect, useRef, useState } from "react";
 import AlertBoard, { type TabKey } from "../../components/AlertBoard";
 import Topbar from "../../components/Topbar";
-import { listAlerts } from "../../lib/api";
+import { listAlerts, ReportApiError } from "../../lib/api";
 import { useLiveTick } from "../../lib/useLiveTick";
 import { todayKst } from "../../lib/date";
 import type { AlertItem } from "../../types/alert";
+
+function alertsErrorMessage(cause: unknown): string {
+  if (cause instanceof ReportApiError) {
+    return "알림을 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  if (cause instanceof Error && cause.message.includes("10초")) {
+    return "알림을 불러오지 못했습니다.\n다시 시도해 주세요.";
+  }
+  return "네트워크 연결을 확인해 주세요.";
+}
 
 export default function AlertsPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -33,7 +43,7 @@ export default function AlertsPage() {
         loadedFor.current = asOf;
         setError("");
       })
-      .catch((cause) => !cancelled && !silent && setError(cause instanceof Error ? cause.message : "알림을 불러오지 못했습니다."))
+      .catch((cause) => !cancelled && !silent && setError(alertsErrorMessage(cause)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -56,8 +66,7 @@ export default function AlertsPage() {
       )}
       {!loading && error && (
         <section className="status-card status-error" role="alert">
-          <strong>알림을 불러오지 못했습니다.</strong>
-          <span>{error}</span>
+          <span style={{ whiteSpace: "pre-line" }}>{error}</span>
         </section>
       )}
 
