@@ -244,6 +244,10 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
             images=request.images,
             message=request.message,
             report_id=report_id,
+            # Langfuse Users 탭에서 평가(eval-runner)와 실제 사용을 가르는 "요청 출처" 라벨.
+            # 로그인이 없어 사람을 식별할 수 없으므로, 사람이 아니라 어디서 온 요청인지를 붙인다.
+            # 요청 본문에서 받지 않는다 — 클라이언트가 임의 값을 넣지 못하게. docs/specs/langfuse-user-id.md
+            user_id="web",
         )
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
