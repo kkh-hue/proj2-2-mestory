@@ -28,6 +28,7 @@ import psycopg
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from .analysis import build_analysis, resolve_period
+from .images import to_thumbnails
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,12 @@ async def init_db() -> None:
             # 이미 배포된 테이블에 화면 표시용 칸만 뒤늦게 추가한다.
             await conn.execute(
                 "alter table chat_messages add column if not exists display_content text"
+            )
+            # 첨부 사진도 같은 원칙 — 화면에 다시 그릴 용도로만 쓰고 content에는 넣지 않는다.
+            # jsonb인 이유: 배열을 담으므로 reports.causes·visual_findings와 성격이 같다.
+            # (docs/specs/chat-image-persistence.md)
+            await conn.execute(
+                "alter table chat_messages add column if not exists display_images jsonb"
             )
             await conn.execute(
                 "create index if not exists idx_chat_messages_session "
@@ -170,17 +177,28 @@ async def save_message(
     content: str,
     report_id: str | None = None,
     display_content: str | None = None,
+    images: list[str] | None = None,
 ) -> None:
     """content는 LLM 대화 맥락용(원문 그대로), display_content는 화면 표시용(짧고 사람이 읽는 문장).
 
     display_content를 안 주면(기존 호출부) content를 그대로 화면에도 쓴다 — 회귀 없음.
+
+    images는 화면 말풍선에 다시 그릴 첨부 사진이다 (docs/specs/chat-image-persistence.md).
+    **content에는 절대 넣지 않는다** — 거기 들어가면 load_chat_history()를 타고 LLM 프롬프트로
+    흘러들어가 후속 질문마다 base64가 재전송된다(multimodal.md AC-10).
+
+    썸네일 변환을 호출부가 아니라 여기서 하는 이유: 어느 경로로 들어오든 DB에는 항상
+    줄어든 사본만 들어가게 하려는 것이다. 호출부에 맡기면 나중에 누군가 원본을 그대로 넘긴다.
     """
+    thumbnails = to_thumbnails(images) or None
     try:
         async with await _connect() as conn:
             await conn.execute(
-                "insert into chat_messages (session_id, role, content, display_content, report_id) "
-                "values (%s, %s, %s, %s, %s)",
-                (session_id, role, content, display_content, report_id),
+                "insert into chat_messages "
+                "(session_id, role, content, display_content, report_id, display_images) "
+                "values (%s, %s, %s, %s, %s, %s)",
+                (session_id, role, content, display_content, report_id,
+                 json.dumps(thumbnails, ensure_ascii=False) if thumbnails else None),
             )
     except Exception as exc:
         logger.warning("대화 메시지 저장 실패 (session_id=%s): %s", session_id, exc)
@@ -234,6 +252,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
         async with await _connect() as conn:
             cur = await conn.execute(
                 "select m.role, m.content, m.display_content, m.report_id, m.created_at, "
+                "       m.display_images, "
                 "       r.id, r.equipment_id, r.line_id, r.period, r.causes, "
                 "       r.unclassified_count, r.confidence_note, r.recommended_action, "
                 "       r.visual_findings, r.used_image "
@@ -248,9 +267,14 @@ async def list_chat_turns(session_id: str) -> list[dict]:
         raise DatabaseUnavailableError("데이터베이스에서 대화 기록을 조회하지 못했습니다") from exc
 
     turns: list[dict] = []
-    for (role, content, display_content, report_id, created_at, r_id, equipment_id, line_id, period, causes,
+    for (role, content, display_content, report_id, created_at, display_images,
+         r_id, equipment_id, line_id, period, causes,
          unclassified_count, confidence_note, recommended_action, visual_findings, used_image) in rows:
         turn: dict = {"role": role, "content": display_content or legacy_display_text(role, content), "created_at": created_at.isoformat()}
+        # 이 칸이 생기기 전에 저장된 행은 NULL이다 — 그때는 키 자체를 넣지 않아
+        # 프론트가 "사진 없음"과 똑같이 다루게 한다.
+        if display_images:
+            turn["images"] = display_images
         if report_id and r_id:
             turn["report"] = {
                 "id": r_id,

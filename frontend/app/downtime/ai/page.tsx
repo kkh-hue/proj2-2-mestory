@@ -90,9 +90,10 @@ const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
 // 첨부한 사진 1장. bytes를 들고 있는 이유는 합계 용량을 매번 다시 재지 않기 위해서다.
 type Attachment = { name: string; bytes: number; dataUrl: string };
 
-// 화면에서만 쓰는 값이라 백엔드 계약 타입(types/report.ts)에 넣지 않는다.
-// images는 내가 방금 올린 사진이고, 서버 대화 기록에는 저장되지 않는다(multimodal.md AC-10).
-type ChatTurnView = ChatTurn & { images?: string[] };
+// images는 이제 백엔드 계약(types/report.ts의 ChatTurn)에 들어가 있다.
+// 방금 올린 사진은 로컬 상태로, 새로고침 뒤에는 서버가 돌려준 썸네일로 같은 자리에 그려진다
+// (docs/specs/chat-image-persistence.md). LLM 대화 맥락에는 여전히 들어가지 않는다.
+type ChatTurnView = ChatTurn;
 
 function megabytes(bytes: number): string {
   return (bytes / (1024 * 1024)).toFixed(1);
