@@ -55,6 +55,10 @@ export interface ChatTurn {
   content: string;
   created_at: string;
   report?: SavedReport;
+  // 사용자가 첨부했던 사진 (docs/specs/chat-image-persistence.md).
+  // 서버가 화면 표시용으로만 보관하는 썸네일이라, LLM 대화 맥락에는 들어가지 않는다.
+  // 이 기능 이전에 저장된 대화에는 없으므로 선택 필드다.
+  images?: string[];
 }
 
 // GET /chat/sessions 목록 항목 — AI 원인분석 화면 왼쪽 세션 목록용.
