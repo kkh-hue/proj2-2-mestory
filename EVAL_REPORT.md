@@ -109,6 +109,10 @@
 멀티모달 10건은 `skill-before`·`baseline2` 모두 `visual_extraction 1.000 / contract 1.000`
 (gpt-5-mini. 4장의 gpt-4o-mini 기준 0.900 / 0.975와는 모델이 달라 직접 비교하지 않는다).
 
+![Langfuse Experiments — 멀티모달 10건 3회차의 점수·지연·비용](docs/images/langfuse-eval-06-experiments-mm.png)
+
+*Datasets → `멀티모달 10건 평가셋` → Experiments. 회차당(10건) 비용은 $0.052~$0.056, 평균 지연은 21.0~25.3s이다. `baseline-mm`의 `contract 0.90`은 모델이 틀린 것이 아니라 MM-05가 라인 불일치로 거절된 **측정 도구 문제**였고(3-1장의 3번), 고친 뒤 `baseline2-mm`·`skill-before-mm`은 둘 다 `contract 1.00 / visual_extraction 1.00`이다.*
+
 **Langfuse 화면** — Datasets → `30개 이상 데이터셋` → Experiments. 회차별 평균 점수·지연·비용이 표로 나온다.
 
 ![Langfuse Experiments — 텍스트 30건 4회차의 점수·지연·비용](docs/images/langfuse-eval-04-experiments.png)
