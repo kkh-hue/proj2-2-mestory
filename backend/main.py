@@ -31,6 +31,8 @@ from .db import (
     list_equipment_status,
     list_reports,
 )
+from .auth_db import init_auth_db
+from .auth_routes import router as auth_router
 from .report_email import (
     ReportEmailError,
     is_allowed_recipient,
@@ -53,10 +55,12 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
     await init_db()
+    await init_auth_db()
     yield
 
 
 app = FastAPI(title="MESTORY API", lifespan=_lifespan)
+app.include_router(auth_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -65,7 +69,7 @@ app.add_middleware(
         if origin.strip()
     ],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
     allow_credentials=False,
     # 프론트가 방금 생성한 리포트의 id를 응답 헤더로 받아 "상세 리포트 보기"에 쓴다 (F-07).
     # CORS 기본값은 "단순 헤더"만 JS에 노출하므로, 커스텀 헤더는 여기 명시해야 fetch에서 읽힌다.
