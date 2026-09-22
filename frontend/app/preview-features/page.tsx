@@ -16,6 +16,7 @@ const previewReport: DowntimeReport = {
   ],
   recommended_action: "PREVIEW 권장 조치: 센서 배선과 압력 공급 장치를 우선 점검하세요.",
   confidence_note: "PREVIEW 분석 참고 사항입니다. 실제 분석 결과가 아닙니다.", unclassified_count: 2,
+  visual_findings: null, used_image: false,
 };
 const topItems = [{ error_code: "E-104", total_downtime_min: 78, count: 4 }, { error_code: "E-205", total_downtime_min: 42, count: 3 }, { error_code: "E-310", total_downtime_min: 22, count: 2 }];
 
