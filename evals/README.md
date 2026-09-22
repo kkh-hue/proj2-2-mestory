@@ -47,7 +47,22 @@ Langfuse Dataset으로 텍스트 30건 + 멀티모달 10건을 한 번에 돌리
 ```bash
 python scripts/run_langfuse_eval.py --tag <회차명>            # 텍스트 + 멀티모달
 python scripts/run_langfuse_eval.py --tag <회차명> --only text --limit 3   # 시험 실행
+python scripts/run_langfuse_eval.py --compare <회차A> <회차B>  # 텍스트 두 회차 비교 (Langfuse·LLM 호출 없음, 비용 없음)
 ```
+
+예) 무언가를 바꾸기 전후로 텍스트 30건을 재고 비교한다:
+
+```bash
+python scripts/run_langfuse_eval.py --tag before --only text
+# … SKILL.md·프롬프트 등 하나만 바꾼다 …
+python scripts/run_langfuse_eval.py --tag after --only text
+python scripts/run_langfuse_eval.py --compare before after
+```
+
+- `--compare`는 축별 평균의 변화와 **떨어진 문항 목록**(문항 번호·축·점수·판정 이유)을 보여 준다. 인프라 오류로 못 잰 문항은 회귀로 세지 않고 따로 적는다.
+- 텍스트 Dataset은 `dataset.jsonl`에서 **자동으로 만든다**. 이름은 `mestory-text-30-<내용 지문 8자리>`라서, 평가셋이 바뀌면 새 Dataset이 생기고 옛 내용으로 도는 일이 없다.
+- 회차 파일에 평가셋 지문이 남는다. `--compare`는 **지문이 다른 두 회차를 비교하지 않는다**(평가셋이 바뀌었으면 '회귀'가 모델 탓인지 문항 탓인지 가를 수 없다).
+- 2026-09-21에 CSV로 올린 `30개 이상 데이터셋`으로 잰 옛 회차(`langfuse_baseline` 등)는 확정(9/22) 전 내용이고 문항 id도 달라, 새 회차와 문항별 비교가 되지 않는다. 옛 회차끼리는 비교된다.
 
 평가셋 자체를 점검할 때는(겹치는 케이스, 사전에는 있지만 평가셋에 없는 에러코드) 아래 오프라인 도구를 씁니다. LLM 호출도, 비용도 없습니다(문자열 유사도만 씁니다).
 
