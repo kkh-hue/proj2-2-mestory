@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { usePathname, useRouter } from "next/navigation";
 import { getMe, type AuthUser } from "../lib/authApi";
 import { getAccessToken, removeAccessToken } from "../lib/authToken";
+import AppShell from "./AppShell";
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -58,6 +59,15 @@ export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used inside AuthProvider");
   return context;
+}
+
+export function AuthLayout({ children }: { children: ReactNode }) {
+  const { isAuthenticated, loading } = useAuth();
+  return (
+    <AuthGate>
+      {loading || !isAuthenticated ? children : <AppShell>{children}</AppShell>}
+    </AuthGate>
+  );
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
