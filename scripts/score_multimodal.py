@@ -382,8 +382,11 @@ def do_compare(before: str, after: str) -> None:
     for axis in ("visual_extraction", "contract"):
         x, y = a["axes"][axis], b["axes"][axis]
         print(f"  {axis:18s} {x:10.3f} → {y:10.3f}   {y - x:+.3f}")
-    print(f"  {'최악1건(초)':18s} {a['latency']['p95']:10.1f} → {b['latency']['p95']:10.1f}   "
-          f"{b['latency']['p95'] - a['latency']['p95']:+.1f}")
+    # 저장된 latency.p95는 옛 회차면 옛 공식(10건이면 최댓값)으로 계산된 값이다.
+    # 두 회차를 같은 공식으로 비교하려고 케이스별 원본 지연(elapsed_sec)에서 다시 계산한다.
+    a_p95 = p95([c["elapsed_sec"] for c in a["cases"]])
+    b_p95 = p95([c["elapsed_sec"] for c in b["cases"]])
+    print(f"  {'p95(초)':18s} {a_p95:10.1f} → {b_p95:10.1f}   {b_p95 - a_p95:+.1f}")
 
     a_case = {c["id"]: c for c in a["cases"]}
     regressed, improved = [], []
