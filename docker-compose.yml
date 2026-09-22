@@ -7,5 +7,9 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    # 이미지에는 CSV(data/)가 없어서 컨테이너 안에서는 csv 모드가 동작할 수 없다.
+    # environment는 env_file보다 우선하므로 .env에 csv가 남아 있어도 db로 고정된다.
+    environment:
+      MESTORY_DATA_SOURCE: db
     # Apple Silicon에서 이미지가 안 뜨면 아래 주석을 해제해 보세요
     # platform: linux/amd64
