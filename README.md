@@ -38,6 +38,13 @@ curl -X POST https://mestory.up.railway.app/report \
 
 배포는 Railway CLI로 합니다 — **백엔드는 저장소 루트에서, 프론트엔드는 `frontend/`에서** 올려야 합니다(반대로 올리면 다른 앱이 서비스에 올라갑니다).
 
+## 🐳 로컬 실행 (docker compose)
+
+1. clone 후 `.env.example`을 `.env`로 복사합니다: `cp .env.example .env`
+2. `.env`에 `DATABASE_URL`과 `OPENROUTER_API_KEY`(본인 OpenRouter 키)를 채웁니다. DATABASE_URL 은 제출 폼에 별도로 기재했습니다.
+3. `docker compose up --build` → `curl http://localhost:8000/health`가 `{"status":"ok"}`이면 준비 완료
+4. 리포트: 위 `curl -X POST …/report` 예시에서 주소만 `http://localhost:8000`으로 바꿔 호출
+
 ## 🤖 LLM 출력 계약 (필수 조건 3)
 
 `backend/services/llm.py`에서 LangChain `ChatOpenAI`(OpenRouter 경유) + `create_tool_calling_agent`/`AgentExecutor`로 **실제 LLM을 호출**합니다. 응답은 Pydantic(`DowntimeReport`/`DowntimeCause`)으로 스키마 검증하고, 최대 3단계로 시도합니다(① 기본 스키마 → ② 프롬프트를 보강해 같은 스키마로 재시도 → ③ 축소 스키마로 재시도). **3단계가 모두 실패하면 빈 리포트로 감추지 않고 HTTP 503을 반환**하며 리포트·ID를 저장하지 않습니다. 사용자가 준 조건(`equipment_id`·`line_id`·`period`)과 `used_image`는 LLM 출력을 믿지 않고 코드가 덮어씁니다.
