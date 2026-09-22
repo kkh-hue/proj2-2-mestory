@@ -50,6 +50,7 @@ python -m mcp_server.server              # MCP 서버 단독 실행(에러 확�
 
 - `MESTORY_DATA_SOURCE=csv`(기본) → `MESTORY_DATA_DIR` 또는 `proj2-2/data`
 - `MESTORY_DATA_SOURCE=db` → `DATABASE_URL` 또는 `DATABASE_PUBLIC_URL`
+- `docker compose up`은 `docker-compose.yml`이 `db`로 고정한다. 이미지에 `data/`가 없어 컨테이너 안에서는 csv 모드가 동작하지 않는다. 채점자는 `.env`에 `DATABASE_URL`(제출 폼에 따로 기재)과 본인 `OPENROUTER_API_KEY`를 채운다(`README.md` "로컬 실행").
 
 ## 협업 규칙
 
