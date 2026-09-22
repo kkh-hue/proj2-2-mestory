@@ -5,9 +5,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { IconBell, IconChart, IconDashboard, IconEquipment, IconReport, IconRobot } from "./icons";
+import { IconBell, IconChart, IconDashboard, IconEquipment, IconExternalLink, IconReport, IconRobot } from "./icons";
 import { listAlerts } from "../lib/api";
 import { useAuth } from "./AuthProvider";
+
+// 관측 대시보드 링크. Langfuse는 로그인이 별도로 필요해 사이드바에서 굳이 감싸지 않고
+// 새 탭으로 바로 연다 — 팀 내부용이라 지도교수·평가자 계정과는 무관하다.
+const LANGFUSE_URL = "https://cloud.langfuse.com/project/cmu5lmjq400cead0gx4m6okiv/traces";
 
 const NAV_ITEMS = [
   { href: "/", label: "대시보드", Icon: IconDashboard },
@@ -124,6 +128,24 @@ export default function Sidebar() {
             로그인
           </button>
         )}
+        <a
+          href={LANGFUSE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 10,
+            padding: "6px 10px",
+            color: "var(--muted)",
+            fontSize: 11,
+            textDecoration: "none",
+          }}
+        >
+          <IconExternalLink width={13} height={13} />
+          <span>Langfuse 관측 대시보드</span>
+        </a>
       </div>
     </aside>
   );
