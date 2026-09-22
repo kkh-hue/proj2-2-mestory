@@ -1,12 +1,16 @@
 """Langfuse Dataset으로 평가를 돌린다 — 텍스트 30건 + 멀티모달 10건.
 
 하는 일
-  ① 텍스트: Langfuse에 올려 둔 Dataset 항목을 읽어 분석기(generate_report)에 넣고,
-     결과를 **LLM 판정 + 규칙**으로 채점해 Langfuse에 기록한다.
+  ① 텍스트: evals/dataset.jsonl에서 Langfuse Dataset을 (없으면) 만들고, 항목을 분석기(generate_report)에
+     넣어 결과를 **LLM 판정 + 규칙**으로 채점해 Langfuse에 기록한다.
+     Dataset 이름에 평가셋 내용의 지문을 넣는다(mestory-text-30-<지문 8자리>) — jsonl이 바뀌면
+     새 Dataset이 생겨, 옛 내용으로 도는 일이 없다. jsonl은 읽기만 한다(강경희 님 담당).
   ② 멀티모달: evals/dataset_multimodal.jsonl에서 Langfuse Dataset을 (없으면) 만들고,
      scripts/score_multimodal.py와 **같은 규칙 채점**(visual_extraction · contract)으로 돌린다.
      이미지는 base64로 Langfuse에 올리지 않는다(멀티모달 Spec AC-10). 파일명만 넣고
      실제 이미지는 이 스크립트가 로컬에서 읽어 붙인다.
+  ③ 비교: --compare 이전 이후 — 두 텍스트 회차를 축별 평균과 **문항별 회귀 목록**으로 대조한다.
+     Langfuse·LLM을 부르지 않고 evals/runs/langfuse_<회차>.json만 읽는다.
 
 측정 축 (텍스트)
   contract      : 인프라 오류·폴백 없이 처리됐는가 (규칙). 400·422로 거절한 것은 정상 처리다.
@@ -26,6 +30,7 @@
     python scripts/run_langfuse_eval.py --tag before
     python scripts/run_langfuse_eval.py --tag after --only text
     python scripts/run_langfuse_eval.py --tag smoke --limit 3
+    python scripts/run_langfuse_eval.py --compare before after      # 두 회차 대조 (비용 없음)
 
   MESTORY_DATA_SOURCE=csv, MESTORY_DATA_DIR=docs 로 돌리면 DB 없이 CSV로 조회한다.
   리포트 저장(save_report)은 하지 않는다 — 평가가 운영 DB에 리포트를 쌓으면 안 된다.
@@ -38,6 +43,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -59,10 +65,16 @@ from langfuse import Evaluation, get_client  # noqa: E402
 
 import backend.services.llm as llm  # noqa: E402
 from backend.services.llm import AnalysisInfrastructureError, generate_report  # noqa: E402
+from scripts.eval_compare import (  # noqa: E402
+    TEXT_AXES, check_same_dataset, compare_runs, format_axes, format_items, text_items,
+)
 
 RUNS = REPO_ROOT / "evals" / "runs"
+TEXT_DATASET_FILE = REPO_ROOT / "evals" / "dataset.jsonl"
 MM_DATASET_FILE = REPO_ROOT / "evals" / "dataset_multimodal.jsonl"
-DEFAULT_TEXT_DATASET = "30개 이상 데이터셋"
+# 2026-09-21에 CSV로 올린 Dataset. 강경희 님의 확정(2026-09-22, 7문항 변경) **전** 내용이다.
+# 기본값으로 쓰지 않는다 — 옛 회차를 그대로 재현할 때만 --text-dataset으로 지정한다.
+LEGACY_TEXT_DATASET = "30개 이상 데이터셋"
 DEFAULT_MM_DATASET = "멀티모달 10건 평가셋"
 DEFAULT_JUDGE = "anthropic/claude-haiku-4.5"
 
@@ -277,6 +289,51 @@ def text_evaluator(*, input, output, expected_output, metadata=None, **kwargs):
 
 
 # ─────────────────────────────────────────────
+# 텍스트 Dataset — evals/dataset.jsonl에서 만든다 (없을 때만). ensure_mm_dataset()과 같은 모양
+# ─────────────────────────────────────────────
+def load_text_cases() -> list[dict]:
+    """텍스트 평가셋을 읽는다. **읽기만 한다** — 내용은 강경희 님 담당이다."""
+    return [json.loads(line) for line in TEXT_DATASET_FILE.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def text_fingerprint(cases: list[dict]) -> str:
+    """평가셋 내용의 지문(sha256 16진수).
+
+    파일 바이트가 아니라 **읽어 들인 내용**으로 잰다. Windows 작업 폴더는 CRLF, 저장소는 LF라
+    바이트로 재면 같은 평가셋인데 PC마다 지문이 달라진다. 키 순서도 고정해서 잰다.
+    """
+    canonical = json.dumps(cases, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def default_text_dataset_name(cases: list[dict]) -> str:
+    """Dataset 이름 = 건수 + 지문 앞 8자리. 평가셋이 바뀌면 이름이 바뀌어 새 Dataset이 생긴다."""
+    return f"mestory-text-{len(cases)}-{text_fingerprint(cases)[:8]}"
+
+
+def ensure_text_dataset(lf, name: str) -> None:
+    try:
+        lf.get_dataset(name)
+        return
+    except Exception:
+        pass
+    cases = load_text_cases()
+    fp8 = text_fingerprint(cases)[:8]
+    lf.create_dataset(name=name, description=f"MESTORY 텍스트 평가셋 {len(cases)}건 "
+                                              f"(evals/dataset.jsonl에서 생성, 지문 {fp8})")
+    for c in cases:
+        # 항목 id는 프로젝트 전체에서 하나여야 하고 다른 Dataset에 다시 쓸 수 없다(Langfuse SDK 설명).
+        # 그래서 지문을 넣는다 — 평가셋이 바뀌어 새 Dataset을 만들 때 id가 겹치지 않는다.
+        # 회차끼리 짝을 맞추는 키는 id가 아니라 metadata의 case_id(평가셋의 id)다.
+        lf.create_dataset_item(
+            dataset_name=name, id=f"mestory-text-{fp8}-{c['id']}", input=c["input"],
+            expected_output=c["expected"],
+            metadata={"case_id": c["id"], "note": c.get("note"), "why": c.get("why")},
+        )
+    print(f"텍스트 Dataset '{name}' 생성 ({len(cases)}건)")
+
+
+# ─────────────────────────────────────────────
 # 멀티모달 — 채점은 score_multimodal.py와 같은 규칙을 그대로 쓴다
 # ─────────────────────────────────────────────
 def ensure_mm_dataset(lf, name: str) -> None:
@@ -325,7 +382,12 @@ def summarize(result) -> dict:
     per_axis: dict[str, list[float]] = {}
     items = []
     for ir in result.item_results:
-        row = {"item_id": getattr(ir.item, "id", None), "scores": {}, "comments": {}}
+        # case_id = 평가셋의 id. 회차끼리 짝을 맞추는 키다(Langfuse 항목 id는 Dataset마다 달라 못 쓴다).
+        # 2026-09-22 전 Dataset의 항목에는 없어서 None이 된다 → 비교할 때 item_id로 대신한다.
+        metadata = getattr(ir.item, "metadata", None)
+        metadata = metadata if isinstance(metadata, dict) else {}   # Langfuse는 metadata에 아무 값이나 허용한다
+        row = {"item_id": getattr(ir.item, "id", None), "case_id": metadata.get("case_id"),
+               "scores": {}, "comments": {}}
         for ev in ir.evaluations or []:
             per_axis.setdefault(ev.name, []).append(float(ev.value))
             row["scores"][ev.name] = float(ev.value)
@@ -375,15 +437,50 @@ def run_one(lf, *, kind: str, dataset_name: str, tag: str, limit: int | None, co
     return summary
 
 
+def do_compare(before: str, after: str) -> None:
+    """두 텍스트 회차(evals/runs/langfuse_<회차>.json)를 축별 평균과 문항별 회귀로 대조한다.
+
+    Langfuse·LLM을 부르지 않는다 — 회차 파일만 읽으므로 비용이 없다.
+    평가셋 지문이 다른 두 회차는 비교하지 않는다. 평가셋이 바뀌었으면 '회귀'가 모델 탓인지 문항 탓인지 가를 수 없다.
+    """
+    runs = []
+    for tag in (before, after):
+        path = RUNS / f"langfuse_{tag}.json"
+        if not path.exists():
+            raise SystemExit(f"{path.relative_to(REPO_ROOT)} 없음 — 회차 이름을 확인하세요")
+        run = json.loads(path.read_text(encoding="utf-8"))
+        if "text" not in run:
+            raise SystemExit(f"'{tag}' 회차에는 텍스트 결과가 없습니다 (--only mm으로 잰 회차)")
+        runs.append(run)
+
+    ok, message = check_same_dataset(*runs)
+    if message:
+        print(f"⚠️  {message}\n")
+    if not ok:
+        raise SystemExit(1)
+    result = compare_runs(text_items(runs[0]), text_items(runs[1]), TEXT_AXES)
+    print("\n".join(format_axes(result, before, after) + format_items(result)))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tag", required=True, help="회차 이름 (예: before, after)")
+    ap.add_argument("--tag", help="회차 이름 (예: before, after). --compare를 쓸 때만 빼도 된다")
+    ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"),
+                    help="두 텍스트 회차를 문항별로 대조한다 (Langfuse·LLM 호출 없음)")
     ap.add_argument("--only", choices=["text", "mm", "both"], default="both")
     ap.add_argument("--limit", type=int, help="항목 수 제한 (시험 실행용)")
     ap.add_argument("--concurrency", type=int, default=3)
-    ap.add_argument("--text-dataset", default=DEFAULT_TEXT_DATASET)
+    ap.add_argument("--text-dataset", default=None,
+                    help=f"기본값: evals/dataset.jsonl에서 만든 mestory-text-<건수>-<지문>. "
+                         f"옛 회차를 재현할 때만 지정 (예: {LEGACY_TEXT_DATASET})")
     ap.add_argument("--mm-dataset", default=DEFAULT_MM_DATASET)
     args = ap.parse_args()
+
+    if args.compare:
+        do_compare(*args.compare)
+        return
+    if not args.tag:
+        ap.error("--tag가 필요합니다 (--compare를 쓸 때만 빼도 됩니다)")
 
     if not (os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")):
         raise SystemExit("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY가 없습니다")
@@ -392,7 +489,15 @@ def main() -> None:
     out = {"tag": args.tag, "when": datetime.now().isoformat(timespec="seconds"),
            "generator": llm.get_model_name(), "judge": os.getenv("MESTORY_JUDGE_MODEL", DEFAULT_JUDGE)}
     if args.only in ("text", "both"):
-        out["text"] = run_one(lf, kind="text", dataset_name=args.text_dataset, tag=args.tag,
+        cases = load_text_cases()
+        default_name = default_text_dataset_name(cases)
+        text_dataset = args.text_dataset or default_name
+        ensure_text_dataset(lf, text_dataset)
+        # --compare가 '같은 평가셋에서 잰 회차인가'를 가르는 근거. 이름에 지문이 든 기본 Dataset일 때만 적는다
+        # (이름을 직접 지정하면 그 Dataset이 지금의 jsonl과 같은 내용인지 보장할 수 없다).
+        out["text_dataset"] = text_dataset
+        out["text_dataset_fingerprint"] = text_fingerprint(cases) if text_dataset == default_name else None
+        out["text"] = run_one(lf, kind="text", dataset_name=text_dataset, tag=args.tag,
                               limit=args.limit, concurrency=args.concurrency)
     if args.only in ("mm", "both"):
         ensure_mm_dataset(lf, args.mm_dataset)

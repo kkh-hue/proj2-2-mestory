@@ -61,6 +61,7 @@ from backend.services.llm import (  # noqa: E402
     resolve_model_name,
 )
 from mcp_server.tools.data_loader import load_error_codes          # noqa: E402
+from scripts.eval_compare import MM_AXES, compare_runs, format_axes, format_items, mm_items  # noqa: E402
 from scripts.latency_stats import p95                               # noqa: E402
 
 # "E-102" 같은 에러코드 모양. 사전에 없는 것이 나오면 지어낸 것으로 본다.
@@ -423,37 +424,16 @@ def do_compare(before: str, after: str) -> None:
     a = json.loads((RUNS / f"{before}.json").read_text(encoding="utf-8"))
     b = json.loads((RUNS / f"{after}.json").read_text(encoding="utf-8"))
 
-    print(f"{'축':20s} {before:>10s} → {after:>10s}   변화")
-    for axis in ("visual_extraction", "contract"):
-        x, y = a["axes"][axis], b["axes"][axis]
-        print(f"  {axis:18s} {x:10.3f} → {y:10.3f}   {y - x:+.3f}")
+    # 축별 평균·문항별 회귀는 텍스트 채점기와 같은 공용 모듈(scripts/eval_compare.py)로 계산한다
+    result = compare_runs(mm_items(a), mm_items(b), MM_AXES)
+    print("\n".join(format_axes(result, before, after)))
     # 저장된 latency.p95는 옛 회차면 옛 공식(10건이면 최댓값)으로 계산된 값이다.
     # 두 회차를 같은 공식으로 비교하려고 케이스별 원본 지연(elapsed_sec)에서 다시 계산한다.
     a_p95 = p95([c["elapsed_sec"] for c in a["cases"]])
     b_p95 = p95([c["elapsed_sec"] for c in b["cases"]])
     print(f"  {'p95(초)':18s} {a_p95:10.1f} → {b_p95:10.1f}   {b_p95 - a_p95:+.1f}")
 
-    a_case = {c["id"]: c for c in a["cases"]}
-    regressed, improved = [], []
-    for c in b["cases"]:
-        old = a_case.get(c["id"])
-        if not old:
-            continue
-        for axis in ("visual_extraction", "contract"):
-            d = c["axes"][axis] - old["axes"][axis]
-            if d < 0:
-                regressed.append((c["id"], axis, old["axes"][axis], c["axes"][axis], c["failed"]))
-            elif d > 0:
-                improved.append((c["id"], axis, old["axes"][axis], c["axes"][axis]))
-
-    print(f"\n  회귀한 문항 {len(regressed)}건")
-    for cid, axis, x, y, failed in regressed:
-        print(f"    ❌ {cid} {axis} {x:.2f} → {y:.2f}")
-        for m in failed:
-            print(f"         └ {m}")
-    print(f"\n  좋아진 문항 {len(improved)}건")
-    for cid, axis, x, y in improved:
-        print(f"    ✅ {cid} {axis} {x:.2f} → {y:.2f}")
+    print("\n".join(format_items(result)))
     print("\n  이 표와 회귀 목록을 EVAL_REPORT.md 4장에 그대로 옮기면 된다.")
 
 
