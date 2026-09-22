@@ -917,7 +917,13 @@ async def generate_report(
         #    None이 돼 원본 프롬프트/JSON이 다시 노출되므로, 짧은 대체 문장을 채워 둔다.
         user_display = message or f"{period} · {line_label} · {equipment_label} 원인 분석 요청"
         assistant_display = report.recommended_action or "원인 분석 리포트가 생성되었습니다."
-        await save_message(session_id, "user", history_text, display_content=user_display)
+        # history_text에는 이미지가 없다(_build_user_messages가 텍스트만 만든다 — AC-10).
+        # 사진은 images 인자로만 넘어가 화면 표시용 칸에 썸네일로 저장된다.
+        # LLM 맥락(content)과 화면 표시(display_*)를 나눈 것과 같은 원칙이다.
+        await save_message(
+            session_id, "user", history_text,
+            display_content=user_display, images=images,
+        )
         await save_message(
             session_id, "assistant", report.model_dump_json(),
             report_id=report_id, display_content=assistant_display,

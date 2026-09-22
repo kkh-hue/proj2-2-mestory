@@ -42,5 +42,15 @@ python scripts/score_multimodal.py --tag <회차명>          # 축별 점수 �
 python scripts/score_multimodal.py --compare <회차A> <회차B> # 회차 비교
 ```
 
+Langfuse Dataset으로 텍스트 30건 + 멀티모달 10건을 한 번에 돌리고 회차별로 기록합니다(판정 모델은 생성 모델과 다른 회사 모델).
+
+```bash
+python scripts/run_langfuse_eval.py --tag <회차명>            # 텍스트 + 멀티모달
+python scripts/run_langfuse_eval.py --tag <회차명> --only text --limit 3   # 시험 실행
+```
+
+- 결과는 Langfuse의 Datasets → Experiments와 `runs/langfuse_<회차명>.json`에 남습니다. 자세한 채점 축·한계는 루트 [EVAL_REPORT.md](../EVAL_REPORT.md) 3장.
+- 리포트 저장은 건너뜁니다. OpenRouter 크레딧이 남은 키가 필요하고, DB 없이 돌리려면 `MESTORY_DATA_SOURCE=csv`, `MESTORY_DATA_DIR=<CSV 폴더>`를 줍니다.
+
 - 측정은 **두 번 이상** 재서 회차 간 차이를 봅니다. 같은 조건에서도 점수가 달라질 수 있어(노이즈) 보고서에는 한 번의 값이 아니라 범위로 적습니다.
 - 점수·개선 전후 해석은 루트의 [EVAL_REPORT.md](../EVAL_REPORT.md)에 정리합니다.

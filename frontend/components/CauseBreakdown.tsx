@@ -1,5 +1,6 @@
 import { IconAlertCircle, IconLayers } from "./icons";
 import type { DowntimeCause } from "../types/report";
+import TruncatedTextPopover from "./TruncatedTextPopover";
 
 const SEVERITY_METER: Record<DowntimeCause["severity"], { width: number; tier: "critical" | "warning" | "ok" | "unknown" }> = {
   "중대": { width: 90, tier: "critical" },
@@ -31,9 +32,12 @@ export default function CauseBreakdown({ causes }: { causes: DowntimeCause[] }) 
                   <IconLayers />
                 </span>
                 <div className="breakdown-main">
+                  {/* title은 잘림 여부와 관계없이 늘 붙인다 — 잘렸는지 판단하려면 렌더링 폭을
+                      재야 하는데, 그 복잡도를 감수할 만큼 얻는 게 없다. 설명은 두 줄까지만
+                      보이므로(globals.css의 .breakdown-desc) 전체는 마우스를 올려 본다. */}
                   <div className="breakdown-top">
-                    <span className="breakdown-code">{cause.error_code}</span>
-                    <span className="breakdown-desc">{cause.description}</span>
+                    <span className="breakdown-code" title={cause.error_code}>{cause.error_code}</span>
+                    <TruncatedTextPopover className="breakdown-desc" text={cause.description} />
                   </div>
                   <span className="breakdown-meter-track">
                     <span className={`breakdown-meter-fill meter-${meter.tier}`} style={{ width: `${meter.width}%` }} />

@@ -43,7 +43,7 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .panel-lines li { margin:0; line-height:1.75; font-size:14px; overflow-wrap:anywhere; white-space:pre-line; }
 .cause-section { margin-top:24px; } .cause-title { border-bottom:1px solid var(--line); padding-bottom:10px; } .cause-title h3 { margin:0; } .cause-title span { color:var(--muted); font-size:12px; } .cause-list { display:grid; gap:12px; margin-top:14px; } .cause-item { border:1px solid var(--line); border-radius:13px; padding:16px; } .cause-top { justify-content:flex-start; } .cause-code { font-weight:800; } .severity,.confirmation { border-radius:99px; padding:4px 9px; font-size:11px; font-weight:700; } .severity-high { color:#a83e3e; background:#ffe3e3; } .severity-medium { color:#98700b; background:#fff2c7; } .severity-low { color:#397b50; background:#dff3e4; } .severity-unknown { color:#6b7386; background:#eef0f4; } .confirmation { color:#657084; background:#edf0f4; margin-left:auto; } details { color:#657084; font-size:13px; } summary { cursor:pointer; } details p { margin:10px 0 0; color:#536078; line-height:1.6; }
 .new-analysis-action { display:flex; justify-content:center; margin-top:28px; }
-@media (max-width:760px) { .app-shell { padding:28px 16px 56px; } .content-grid { grid-template-columns:1fr; } .report-heading,.report-heading-actions { align-items:flex-start; flex-direction:column; } .date-range-fields { grid-template-columns:1fr; gap:12px; } .date-separator { display:none; } .input-screen,.screen-panel { margin-top:6vh; } .status-actions { flex-wrap:wrap; } }
+@media (max-width:760px) { .app-shell { padding:28px 16px 56px; } .content-grid { grid-template-columns:1fr; } .report-heading,.report-heading-actions { align-items:flex-start; flex-direction:column; } .date-range-fields { grid-template-columns:1fr; gap:12px; } .date-separator { display:none; } .input-screen,.screen-panel { margin-top:6vh; } .status-actions { flex-wrap:wrap; } .report-detail-actions { display:flex; flex-wrap:wrap; width:100%; min-width:0; gap:10px; } .report-detail-actions > button { flex:1 1 calc(50% - 5px); min-width:0; white-space:nowrap; } .report-detail-actions > button:first-child { order:3; flex-basis:100%; } .report-detail-actions > button:nth-child(2) { order:1; } .report-detail-actions > button:nth-child(3) { order:2; } }
 
 /* ── 대시보드 셸: 사이드바 + 메인 영역 ─────────────────────────── */
 .shell { display:flex; min-height:100vh; }
@@ -121,6 +121,9 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-breakdown-bar-track { height:7px; border-radius:99px; background:#f0f1f6; overflow:hidden; }
 .ai-breakdown-bar-fill { display:block; height:100%; border-radius:99px; background:var(--accent); }
 .ai-breakdown-percent { text-align:right; color:#4a5468; font-weight:700; }
+.truncated-text-trigger { cursor:pointer; }
+.truncated-text-trigger:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:3px; }
+.truncated-text-popover { position:fixed; z-index:1000; width:max-content; max-width:min(320px, calc(100vw - 24px)); padding:9px 11px; border:1px solid var(--line); border-radius:9px; background:#fff; box-shadow:0 8px 24px rgba(35,42,65,.16); color:var(--ink); font-size:12.5px; font-weight:500; line-height:1.5; white-space:normal; overflow-wrap:anywhere; pointer-events:none; }
 
 /* ── 최근 이벤트 테이블 ──────────────────────────────────────── */
 .events-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
@@ -166,10 +169,17 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .breakdown-icon { width:34px; height:34px; border-radius:50%; background:var(--accent-soft); color:var(--accent); display:grid; place-items:center; flex:0 0 auto; }
 .breakdown-icon svg { width:16px; height:16px; }
 .breakdown-main { flex:1 1 auto; min-width:0; }
-.breakdown-top { display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
-.breakdown-code { font-weight:800; font-size:13px; flex:0 0 auto; }
+/* 코드와 설명을 가로로 놓지 않고 세로로 쌓는다.
+   모델이 error_code 한 칸에 "E-102 / E-103 / E-101 (센서/전기 계열)"처럼 여러 개를 넣는 경우가
+   있는데, 가로 배치에서는 그 줄이 옆 칸을 밀어내 심각도 배지를 덮고 카드 밖으로 넘쳤다. */
+.breakdown-top { display:grid; gap:3px; margin-bottom:6px; min-width:0; }
+/* flex:0 0 auto를 뺐다 — 그것 때문에 내용이 아무리 길어도 줄어들지 않았다.
+   코드 줄 자체가 길어질 수 있으므로 끊어서 감싼다. */
+.breakdown-code { font-weight:800; font-size:13px; overflow-wrap:anywhere; }
 .breakdown-list li > .severity-badge { flex:0 0 auto; }
-.breakdown-desc { color:#5b667c; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* 한 줄 고정(nowrap)이라 좁은 폭에서 "소프…"처럼 과하게 잘렸다. 두 줄까지 보여주고 넘치면 줄임표.
+   전체 내용은 title 속성(브라우저 기본 툴팁)으로 본다. */
+.breakdown-desc { color:#5b667c; font-size:13px; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .breakdown-meter-track { display:block; height:8px; border-radius:99px; background:#f0f1f6; overflow:hidden; }
 .breakdown-meter-fill { display:block; height:100%; border-radius:99px; }
 .meter-critical { background:var(--danger); }
@@ -229,8 +239,23 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 }
 @media (max-width:720px) {
   .shell { flex-direction:column; }
-  .sidebar { width:100%; height:auto; position:static; border-right:0; border-bottom:1px solid var(--line); }
-  .sidebar-nav { grid-auto-flow:column; overflow-x:auto; }
+  .sidebar { width:100%; height:auto; position:static; border-right:0; border-bottom:1px solid var(--line); overflow-x:hidden; }
+  .sidebar-nav { display:flex; flex-wrap:wrap; gap:4px; overflow-x:visible; }
+  .sidebar-nav li { flex:1 1 140px; min-width:0; }
+  .sidebar-link { min-width:0; gap:8px; padding:11px 8px; }
+  .sidebar-link span { white-space:nowrap; }
+  .alert-tabs { min-width:0; flex-wrap:wrap; gap:8px 12px; }
+  .alert-tab { flex:1 1 auto; justify-content:center; white-space:nowrap; }
+  .alert-row { display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-rows:auto auto auto; align-items:start; gap:4px 12px; }
+  .alert-icon { grid-column:1; grid-row:1 / span 3; }
+  .alert-body { display:contents; }
+  .alert-top { grid-column:2; grid-row:1; min-width:0; margin-bottom:0; }
+  .alert-top h4 { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .alert-desc { grid-column:2; grid-row:3; }
+  .alert-right { display:contents; }
+  .alert-date { grid-column:2; grid-row:2; }
+  .alert-dot { grid-column:3; grid-row:1; align-self:center; }
+  .events-row-chevron { grid-column:3; grid-row:2 / span 2; align-self:center; }
   .page { padding:24px 18px 48px; }
   .kpi-grid { grid-template-columns:1fr; }
 }
@@ -505,7 +530,18 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
 .ai-attach-remove:disabled { opacity:.45; cursor:not-allowed; }
 /* 내 말풍선 안에 보이는 첨부 사진 — 말풍선이 보라색이라 흰 테두리로 띄운다 */
 .ai-bubble-images { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.ai-bubble-images img { width:88px; height:88px; object-fit:cover; border-radius:8px; border:1px solid rgba(255,255,255,.5); }
+/* object-fit을 cover에서 contain으로 바꾼 이유: cover는 정사각형에 맞추려고 가장자리를 잘라낸다.
+   HMI 화면처럼 가로로 긴 사진은 가운데만 남아 무슨 화면인지 알아볼 수 없었다.
+   크기도 88px에서 키웠지만, 말풍선 안에서 글씨를 읽는 건 어차피 무리라 클릭하면 확대한다. */
+.ai-bubble-thumb { padding:0; border:1px solid rgba(255,255,255,.5); border-radius:8px; background:rgba(0,0,0,.12); cursor:zoom-in; line-height:0; transition:filter .15s; }
+.ai-bubble-thumb:hover { filter:brightness(1.08); }
+.ai-bubble-thumb img { width:140px; height:100px; object-fit:contain; border-radius:7px; display:block; }
+
+/* 확대 보기 — 첨부한 화면의 글씨를 읽으려면 이 경로가 사실상 유일하다 */
+.image-viewer { position:fixed; inset:0; z-index:100; background:rgba(16,20,32,.82); display:grid; place-items:center; padding:32px; border:0; cursor:zoom-out; }
+.image-viewer img { max-width:100%; max-height:100%; object-fit:contain; border-radius:10px; box-shadow:0 24px 60px rgba(0,0,0,.45); }
+.image-viewer-hint { position:fixed; left:0; right:0; bottom:18px; text-align:center; color:rgba(255,255,255,.75); font-size:12.5px; }
+@media (max-width:760px) { .ai-bubble-thumb img { width:112px; height:84px; } .image-viewer { padding:16px; } }
 /* 답변의 "이미지에서 확인한 것" 목록 — 다른 dd와 같은 오른쪽 정렬을 따른다 */
 .ai-visual-findings { list-style:none; margin:0; padding:0; display:grid; gap:4px; }
 .ai-sidebar { display:grid; gap:18px; }
@@ -561,3 +597,18 @@ input[type="date"]::-webkit-calendar-picker-indicator { display:none; }
 .cause-info-list { margin:0; display:grid; gap:14px; }
 .cause-info-list dt { font-size:12px; font-weight:700; color:var(--muted); margin-bottom:4px; }
 .cause-info-list dd { margin:0; font-size:14px; font-weight:600; color:var(--ink); line-height:1.5; }
+
+/* ── 리포트 메일 보내기 (docs/specs/report-email.md) ──────────────
+   상단 툴바가 붐비지 않게, 버튼을 누르면 이 영역이 펼쳐진다. */
+.email-panel { border:1px solid var(--line); border-radius:16px; background:#fff; box-shadow:var(--card-shadow); padding:18px 20px; margin-bottom:18px; }
+.email-form { margin:0; }
+.email-label { display:block; font-size:12.5px; font-weight:700; color:#5b667c; margin-bottom:8px; }
+.email-row { display:flex; gap:10px; align-items:center; }
+/* min-width:0 — flex 자식은 기본적으로 내용보다 작아지지 않아, 좁은 화면에서 버튼을 밀어낸다 */
+.email-input { flex:1 1 auto; min-width:0; border:1px solid var(--line); border-radius:11px; padding:10px 13px; font-size:13.5px; color:var(--ink); background:#fff; }
+.email-input:focus { outline:2px solid var(--accent-soft); outline-offset:1px; }
+.email-input:disabled { background:#f7f8fc; color:#8b93a3; }
+.email-hint { margin:10px 0 0; font-size:12px; color:#8b93a3; line-height:1.6; }
+.email-result-ok { margin:10px 0 0; font-size:13px; font-weight:700; color:#2f9e6e; }
+.email-result-error { margin:10px 0 0; font-size:13px; font-weight:700; color:#b44646; }
+@media (max-width:760px) { .email-row { flex-direction:column; align-items:stretch; } }

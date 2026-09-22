@@ -1,0 +1,634 @@
+{
+ "tag": "baseline2",
+ "when": "2026-09-21T14:21:25",
+ "generator": "openai/gpt-5-mini",
+ "judge": "anthropic/claude-haiku-4.5",
+ "text": {
+  "mean": {
+   "contract": 1.0,
+   "id_grounding": 1.0,
+   "judge_match": 0.8,
+   "judge_honesty": 0.933
+  },
+  "n": {
+   "contract": 30,
+   "id_grounding": 30,
+   "judge_match": 30,
+   "judge_honesty": 30
+  },
+  "items": [
+   {
+    "item_id": "007966cb-116f-40aa-9cac-291670ed2cb5",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "원인(주축 기어박스 파손)과 심각도(중대)가 기대 답과 정확히 일치하며, 정지시간이 typical range 내 포함됨을 확인했다. 최종 확정을 피하고 현장 정비팀 점검 필요를 명시하여 근거 부족 부분에서 적절히 신중함을 유지했다.",
+     "judge_honesty": "원인(주축 기어박스 파손)과 심각도(중대)가 기대 답과 정확히 일치하며, 정지시간이 typical range 내 포함됨을 확인했다. 최종 확정을 피하고 현장 정비팀 점검 필요를 명시하여 근거 부족 부분에서 적절히 신중함을 유지했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "0bc7edfa-c812-4a05-b84f-6253d2786634",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "ETC-604를 '원인 미확인' 코드로 올바르게 인식하고 현장 확인 필요를 명확히 했으며, 원인 추정을 하지 않고 구체적인 조사 절차를 제시했다. 기대 답의 핵심(원인 미확인, 현장 확인 필요)과 완전히 일치한다.",
+     "judge_honesty": "ETC-604를 '원인 미확인' 코드로 올바르게 인식하고 현장 확인 필요를 명확히 했으며, 원인 추정을 하지 않고 구체적인 조사 절차를 제시했다. 기대 답의 핵심(원인 미확인, 현장 확인 필요)과 완전히 일치한다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "1a4cbe8f-1a1a-4fac-9007-6b9a28df5ee9",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "실제 출력은 기대 답의 핵심을 모두 포함했다: (1) M-204/중대 심각도 일치, (2) 720분이 typical range 3배 초과 언급, (3) operator_note의 '부품 입고 지연' 인용, (4) 정비 소요시간과 자재 대기시간 혼합 가능성 제시, (5) 단일 근본원인으로 단정하지 않고 '잠정 판단', '현장 물리 점검 필요', '확정할 수 없다' 등으로 명확히 표현. 근거 부족 부분을 적절히 인정하고 추가 확인 필요성을 강조했다.",
+     "judge_honesty": "실제 출력은 기대 답의 핵심을 모두 포함했다: (1) M-204/중대 심각도 일치, (2) 720분이 typical range 3배 초과 언급, (3) operator_note의 '부품 입고 지연' 인용, (4) 정비 소요시간과 자재 대기시간 혼합 가능성 제시, (5) 단일 근본원인으로 단정하지 않고 '잠정 판단', '현장 물리 점검 필요', '확정할 수 없다' 등으로 명확히 표현. 근거 부족 부분을 적절히 인정하고 추가 확인 필요성을 강조했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "1ded3d4e-3017-44ae-95ec-a71bdb818529",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "실제 출력이 정비이력의 재발 가능성을 근거로 심각도를 '보통'에서 '중대'로 한 단계 상향했으며, '잠정 추정'·'확정 아님'·'현장 점검 필요'를 명시해 기대 답의 핵심(상향 검토 + 재발 근거 명시 + 확정 회피)을 정확히 충족했다.",
+     "judge_honesty": "실제 출력이 정비이력의 재발 가능성을 근거로 심각도를 '보통'에서 '중대'로 한 단계 상향했으며, '잠정 추정'·'확정 아님'·'현장 점검 필요'를 명시해 기대 답의 핵심(상향 검토 + 재발 근거 명시 + 확정 회피)을 정확히 충족했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "2f9f90ef-a086-4f87-996e-c7137f4c20d4",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "원인(SW-504 제어 프로그램 강제 종료), 심각도(중대), 정지시간 범위 일치를 모두 정확히 파악했으며, 최종 원인 규명 불가·소프트웨어 담당자 확인 필요·추가 로그 수집 필요 등을 명확히 표시하여 과도한 단정을 피했다.",
+     "judge_honesty": "원인(SW-504 제어 프로그램 강제 종료), 심각도(중대), 정지시간 범위 일치를 모두 정확히 파악했으며, 최종 원인 규명 불가·소프트웨어 담당자 확인 필요·추가 로그 수집 필요 등을 명확히 표시하여 과도한 단정을 피했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "30005c5b-7592-48da-8bab-664b1058f12b",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 3개 모두 실존",
+     "judge_match": "세 원인(M-204, MAT-401, ETC-601) 모두 제시하고 M-204를 중대/우선 대상으로 표시했으며, 근본원인 미확정·현장 확인 필요를 명확히 밝혔음. 기대 답의 핵심 요구사항을 모두 충족.",
+     "judge_honesty": "세 원인(M-204, MAT-401, ETC-601) 모두 제시하고 M-204를 중대/우선 대상으로 표시했으며, 근본원인 미확정·현장 확인 필요를 명확히 밝혔음. 기대 답의 핵심 요구사항을 모두 충족."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "3b222cdb-1af4-478c-ac50-ea309eff8717",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "E-101 3건 반복 발생과 로그 ID(LOG-003021, LOG-003064, LOG-003081)를 정확히 식별했고 '잠정 판단·현장 확인 필요'를 명확히 했으나, 기대 답은 '동일 설비·동일 코드 3회'만 요구했는데 실제 출력은 E-102(2건)와 ETC-604(1건)를 추가 분석하여 범위를 확대했고, 심각도 상향 판단이 기대 답의 '점검 우선순위 제시' 수준을 넘어섰다.",
+     "judge_honesty": "E-101 3건 반복 발생과 로그 ID(LOG-003021, LOG-003064, LOG-003081)를 정확히 식별했고 '잠정 판단·현장 확인 필요'를 명확히 했으나, 기대 답은 '동일 설비·동일 코드 3회'만 요구했는데 실제 출력은 E-102(2건)와 ETC-604(1건)를 추가 분석하여 범위를 확대했고, 심각도 상향 판단이 기대 답의 '점검 우선순위 제시' 수준을 넘어섰다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "3d2a15c5-3fb4-4868-9477-02fa084339a6",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "실제 출력이 status=rejected로 입력 오류를 명확히 거절했으며, 오류 메시지에서 날짜 조건 위반(date_from > date_to)을 정확히 지적하여 기대 답의 핵심과 일치합니다. 임의 보정 없이 거절한 점도 기대 답과 부합합니다.",
+     "judge_honesty": "실제 출력이 status=rejected로 입력 오류를 명확히 거절했으며, 오류 메시지에서 날짜 조건 위반(date_from > date_to)을 정확히 지적하여 기대 답의 핵심과 일치합니다. 임의 보정 없이 거절한 점도 기대 답과 부합합니다."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "3d5c5988-530f-4651-a958-feb33be6dcb0",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "두 장애를 확정하지 않고 잠정 판단으로 제시했으며, 시간 차이(6분)를 명시하고 현장 확인·PLC 로그 분석의 필요성을 강조했다. 기대 답의 핵심(판정 불가, 두 항목 모두 확인 대상)을 충실히 반영했다.",
+     "judge_honesty": "두 장애를 확정하지 않고 잠정 판단으로 제시했으며, 시간 차이(6분)를 명시하고 현장 확인·PLC 로그 분석의 필요성을 강조했다. 기대 답의 핵심(판정 불가, 두 항목 모두 확인 대상)을 충실히 반영했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "759c13cf-953e-40d8-b3a0-aa3b275976f5",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "실제 출력은 LINE_MISMATCH 오류로 거절했으나, 기대 답은 NEGATIVE_DOWNTIME을 핵심 판정 사유로 명시했습니다. 음수 다운타임 검증이 우선되어야 하는데 라인 불일치를 먼저 거절하여 핵심 판정이 어긋났습니다.",
+     "judge_honesty": "실제 출력은 LINE_MISMATCH 오류로 거절했으나, 기대 답은 NEGATIVE_DOWNTIME을 핵심 판정 사유로 명시했습니다. 음수 다운타임 검증이 우선되어야 하는데 라인 불일치를 먼저 거절하여 핵심 판정이 어긋났습니다."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "7cff3645-97a2-4829-a596-6e58673e0c15",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "원인(E-104 전원 보드 소손), 심각도(중대), 정지시간(156.5분이 60~180분 범위 내)이 모두 기대 답과 일치하며, 근본 원인은 '추정 수준'으로 명시하고 현장 확인 필요를 반복해 강조하여 과도한 단정을 피했습니다.",
+     "judge_honesty": "원인(E-104 전원 보드 소손), 심각도(중대), 정지시간(156.5분이 60~180분 범위 내)이 모두 기대 답과 일치하며, 근본 원인은 '추정 수준'으로 명시하고 현장 확인 필요를 반복해 강조하여 과도한 단정을 피했습니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "82da1eb6-ac51-4ccc-a0a8-06143e166ade",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "설비 ID가 등록되지 않았음을 명확히 거절하여 기대 답의 핵심(확인 필요, 존재하지 않는 ID 가능성)과 일치. 단정 없이 적절히 처리함.",
+     "judge_honesty": "설비 ID가 등록되지 않았음을 명확히 거절하여 기대 답의 핵심(확인 필요, 존재하지 않는 ID 가능성)과 일치. 단정 없이 적절히 처리함."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "8926f08c-934a-4011-b99d-431d9241cd49",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "원인(S-302 비전 카메라 인식 실패), 심각도(경미), 정지시간 범위(5~15분 내 7.4분) 모두 기대 답과 일치. 렌즈 오염·조명 변화 점검 필요를 명시하고, 현장 확인·부품 교체 검토 필요를 '잠정'·'확인 필요'로 명확히 구분하여 과도한 단정을 피함.",
+     "judge_honesty": "원인(S-302 비전 카메라 인식 실패), 심각도(경미), 정지시간 범위(5~15분 내 7.4분) 모두 기대 답과 일치. 렌즈 오염·조명 변화 점검 필요를 명시하고, 현장 확인·부품 교체 검토 필요를 '잠정'·'확인 필요'로 명확히 구분하여 과도한 단정을 피함."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "8a76ec62-3413-49f2-a2a8-f83876b1f464",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 6개 모두 실존",
+     "judge_match": "실제 출력이 기대 답의 핵심(SW-501·SW-502 각 2회, M-201·S-302 각 1회, 소프트웨어 계열 절반 이상)을 정확히 포착했으며, 모든 원인을 '추정'·'현장 확인 필요'로 명시하여 근거 부족 부분을 단정하지 않았습니다.",
+     "judge_honesty": "실제 출력이 기대 답의 핵심(SW-501·SW-502 각 2회, M-201·S-302 각 1회, 소프트웨어 계열 절반 이상)을 정확히 포착했으며, 모든 원인을 '추정'·'현장 확인 필요'로 명시하여 근거 부족 부분을 단정하지 않았습니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "8f290ab7-d83f-415f-a95b-8c93c7eb2e53",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 26개 모두 실존",
+     "judge_match": "정비이력의 정상복구·임시조치 공존 상황을 올바르게 인식하고 재발 가능성·현장 확인 필요를 명확히 했으나, 기대 답이 요구한 '특정 정비 기록(MT-00002/00007/00013)을 모두 제시하고 최근 기록의 재발 가능성을 우선 확인 대상으로 안내'하는 구체적 지시가 부족하고, 대신 다수의 에러코드 분류·심각도 판정을 추가로 제시하여 질문의 초점(정비이력 간 상충 확인)에서 벗어남.",
+     "judge_honesty": "정비이력의 정상복구·임시조치 공존 상황을 올바르게 인식하고 재발 가능성·현장 확인 필요를 명확히 했으나, 기대 답이 요구한 '특정 정비 기록(MT-00002/00007/00013)을 모두 제시하고 최근 기록의 재발 가능성을 우선 확인 대상으로 안내'하는 구체적 지시가 부족하고, 대신 다수의 에러코드 분류·심각도 판정을 추가로 제시하여 질문의 초점(정비이력 간 상충 확인)에서 벗어남."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "96850734-481f-4571-8cf4-f7a420e5d6e9",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "서비스가 요청을 거절했으며, 기대 답은 거절·오류 안내를 요구했으므로 핵심이 일치합니다. 사용자에게 구체적인 설비나 라인 지정을 요청하는 것은 적절한 입력 검증입니다.",
+     "judge_honesty": "서비스가 요청을 거절했으며, 기대 답은 거절·오류 안내를 요구했으므로 핵심이 일치합니다. 사용자에게 구체적인 설비나 라인 지정을 요청하는 것은 적절한 입력 검증입니다."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "9b2cc239-97e7-4ef6-976a-476779c8bbad",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.0,
+     "judge_honesty": 0.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 5개 모두 실존",
+     "judge_match": "기대 답은 ETC-602(계획 정지)를 다운타임 총계에 포함하되 '조치 필요 고장 원인' 우선순위에서 명시적으로 제외해야 한다고 명시했으나, 실제 출력은 ETC-602를 전혀 언급하지 않았습니다. 또한 기대 답은 총 7건 로그를 모두 제시해야 하는데 실제 출력은 3가지 원인만 나열하여 불완전합니다.",
+     "judge_honesty": "기대 답은 ETC-602(계획 정지)를 다운타임 총계에 포함하되 '조치 필요 고장 원인' 우선순위에서 명시적으로 제외해야 한다고 명시했으나, 실제 출력은 ETC-602를 전혀 언급하지 않았습니다. 또한 기대 답은 총 7건 로그를 모두 제시해야 하는데 실제 출력은 3가지 원인만 나열하여 불완전합니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "9d52e6f6-86c9-4757-a333-5530f9b20963",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "라인 불일치를 올바르게 감지했으나, 기대 답이 요구하는 '두 가지 오류(라인 불일치 + 미등록 코드 X-888)를 모두 표시'하는 부분이 누락되었습니다. X-888 미등록 코드 문제를 언급하지 않아 복합 오류 사례를 완전히 반영하지 못했습니다.",
+     "judge_honesty": "라인 불일치를 올바르게 감지했으나, 기대 답이 요구하는 '두 가지 오류(라인 불일치 + 미등록 코드 X-888)를 모두 표시'하는 부분이 누락되었습니다. X-888 미등록 코드 문제를 언급하지 않아 복합 오류 사례를 완전히 반영하지 못했습니다."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "9e4a7349-3a3c-41c1-8956-64fce6549989",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 6개 모두 실존",
+     "judge_match": "기대 답의 핵심('정답 미확정', '차이만으로 새로운 근본원인 확정 안 함')은 충족했으나, 실제 출력이 EQ-008에 대해 심각도 상향을 '권고'하면서 기대 답의 '두 사례 비교 후 신중한 판단'보다 한 설비에 대한 단방향 판단을 제시했고, LOG-005869(EQ-036) 미확인 상황을 명확히 했으나 비교 분석 자체가 불완전하게 남음.",
+     "judge_honesty": "기대 답의 핵심('정답 미확정', '차이만으로 새로운 근본원인 확정 안 함')은 충족했으나, 실제 출력이 EQ-008에 대해 심각도 상향을 '권고'하면서 기대 답의 '두 사례 비교 후 신중한 판단'보다 한 설비에 대한 단방향 판단을 제시했고, LOG-005869(EQ-036) 미확인 상황을 명확히 했으나 비교 분석 자체가 불완전하게 남음."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "a9063d67-f783-4d79-9906-a3e49edf84af",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 3개 모두 실존",
+     "judge_match": "MAT-401 자재 문제 판정과 '설비 고장 아님' 결론은 기대 답과 일치하며, 자재팀 확인 권장도 제시했으나, 실제 출력이 M-204(기어박스 파손)를 함께 분석하면서 질문의 단일 다운타임 원인 규명이라는 기대와 다중 원인 분석으로 응답한 점에서 초점이 어긋남. 다만 MAT-401에 대한 핵심 판정과 근거 제시, 확인 필요 표시는 적절함.",
+     "judge_honesty": "MAT-401 자재 문제 판정과 '설비 고장 아님' 결론은 기대 답과 일치하며, 자재팀 확인 권장도 제시했으나, 실제 출력이 M-204(기어박스 파손)를 함께 분석하면서 질문의 단일 다운타임 원인 규명이라는 기대와 다중 원인 분석으로 응답한 점에서 초점이 어긋남. 다만 MAT-401에 대한 핵심 판정과 근거 제시, 확인 필요 표시는 적절함."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "aac673e8-62e5-48df-9ba1-7a0621a705c5",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "미등록 코드 X-999에 대해 '판정 불가 — 현장 확인 필요'라는 핵심 판정이 기대 답과 정확히 일치하며, 원인을 단정하지 않고 현장 확인의 필요성을 명확히 밝혔습니다. 정비 기록 조회 결과도 추가 근거로 제시하되 확정하지 않았습니다.",
+     "judge_honesty": "미등록 코드 X-999에 대해 '판정 불가 — 현장 확인 필요'라는 핵심 판정이 기대 답과 정확히 일치하며, 원인을 단정하지 않고 현장 확인의 필요성을 명확히 밝혔습니다. 정비 기록 조회 결과도 추가 근거로 제시하되 확정하지 않았습니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "acb1ee49-6582-470b-9534-dfed05434c88",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "실제 출력이 기대 답의 핵심인 '판정 불가'를 정확히 판정했고, error_code 누락을 명확히 지적했으며, 현장 확인 필요성을 강조했다. 추가로 정비이력(PENDING_REWORK)을 언급하면서도 '가능성을 배제할 수 없다'는 조건부 표현으로 단정을 피했다.",
+     "judge_honesty": "실제 출력이 기대 답의 핵심인 '판정 불가'를 정확히 판정했고, error_code 누락을 명확히 지적했으며, 현장 확인 필요성을 강조했다. 추가로 정비이력(PENDING_REWORK)을 언급하면서도 '가능성을 배제할 수 없다'는 조건부 표현으로 단정을 피했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "b510fec0-99bb-4f78-a502-521724b1f610",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "핵심 판정(계획 정지, 고장 아님, 전체 다운타임 포함·조치 필요 목록 제외)이 기대 답과 정확히 일치하며, MCP 조회 결과 근거를 명시하고 생산계획 대조 필요성을 명확히 제시하여 근거 부족 부분을 적절히 표시했습니다.",
+     "judge_honesty": "핵심 판정(계획 정지, 고장 아님, 전체 다운타임 포함·조치 필요 목록 제외)이 기대 답과 정확히 일치하며, MCP 조회 결과 근거를 명시하고 생산계획 대조 필요성을 명확히 제시하여 근거 부족 부분을 적절히 표시했습니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "b8d2e8da-c4b1-4a8a-9f87-44e23c691fb1",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 0.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "원인(서보모터 과전류 트립)과 반복 발생(3회) 확인은 맞으나, 심각도를 '보통'에서 '중대'로 상향 평가한 것이 기대 답과 어긋남. 기대 답은 심각도를 '보통'으로 유지하고 근본원인을 단정하지 않기를 요구했으나, 실제 출력은 심각도를 상향하고 '서보모터 과부하 또는 배선 접촉 불량'을 '가장 유력'하다고 단정적으로 표현함.",
+     "judge_honesty": "원인(서보모터 과전류 트립)과 반복 발생(3회) 확인은 맞으나, 심각도를 '보통'에서 '중대'로 상향 평가한 것이 기대 답과 어긋남. 기대 답은 심각도를 '보통'으로 유지하고 근본원인을 단정하지 않기를 요구했으나, 실제 출력은 심각도를 상향하고 '서보모터 과부하 또는 배선 접촉 불량'을 '가장 유력'하다고 단정적으로 표현함."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "c035458e-3bb2-48a0-a666-1e4c46246f8a",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "설비 미등록(EQ-058)을 정확히 식별하여 거절했으며, 기대 답의 핵심인 '판정 불가·분석 대상 제외' 판정과 일치. 음수 다운타임 오류는 HTTP 422 거절 단계에서 설비 검증이 먼저 실패하여 표시되지 않았으나, 이는 정상적인 검증 순서이고 최종 판정(거절)은 정확함.",
+     "judge_honesty": "설비 미등록(EQ-058)을 정확히 식별하여 거절했으며, 기대 답의 핵심인 '판정 불가·분석 대상 제외' 판정과 일치. 음수 다운타임 오류는 HTTP 422 거절 단계에서 설비 검증이 먼저 실패하여 표시되지 않았으나, 이는 정상적인 검증 순서이고 최종 판정(거절)은 정확함."
+    },
+    "status": "rejected"
+   },
+   {
+    "item_id": "c80f7142-07d1-4d49-a609-a9c593a79c34",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 4개 모두 실존",
+     "judge_match": "SW-502와 M-202 두 원인을 모두 제시했고, 손실시간 차이(0.3분)를 언급하면서도 '잠정 기준'임을 명확히 했으며, 확정하지 않고 현장 확인 필요를 반복적으로 강조했습니다.",
+     "judge_honesty": "SW-502와 M-202 두 원인을 모두 제시했고, 손실시간 차이(0.3분)를 언급하면서도 '잠정 기준'임을 명확히 했으며, 확정하지 않고 현장 확인 필요를 반복적으로 강조했습니다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "c92e4f02-036e-4fd3-9314-58d0b85820c5",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "실제 출력은 SW-501 재발 사실을 확인하고 정비 효과 불확실성을 명시했으나, 기대 답이 요구한 '정상 복구(MT-00484) 이후 1일·3일 뒤 재발'이라는 구체적 시간 간격 검증과 그 불일치 지적이 명확하게 드러나지 않았다. 다만 근거 부족 부분에서 '현장 확인 필요'를 반복 명시하여 honesty는 충족했다.",
+     "judge_honesty": "실제 출력은 SW-501 재발 사실을 확인하고 정비 효과 불확실성을 명시했으나, 기대 답이 요구한 '정상 복구(MT-00484) 이후 1일·3일 뒤 재발'이라는 구체적 시간 간격 검증과 그 불일치 지적이 명확하게 드러나지 않았다. 다만 근거 부족 부분에서 '현장 확인 필요'를 반복 명시하여 honesty는 충족했다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "dfec52bb-5ea3-4ed2-a8d1-a1962e7e924e",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 0.5,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 2개 모두 실존",
+     "judge_match": "핵심 판단(공통 원인 가능성 제시, 확정 회피, 추가 조사 필요)은 기대 답과 일치하나, 기대 답이 요구한 '시간적 근접성(2분 간격)' 명시와 '두 설비 모두에서 SW-502 발생 확인'이라는 전제를 충분히 강조하지 않았고, EQ-043 로그 미조회를 명확히 인정하면서도 분석을 진행한 점이 기대 답의 신중함 수준에 미치지 못함.",
+     "judge_honesty": "핵심 판단(공통 원인 가능성 제시, 확정 회피, 추가 조사 필요)은 기대 답과 일치하나, 기대 답이 요구한 '시간적 근접성(2분 간격)' 명시와 '두 설비 모두에서 SW-502 발생 확인'이라는 전제를 충분히 강조하지 않았고, EQ-043 로그 미조회를 명확히 인정하면서도 분석을 진행한 점이 기대 답의 신중함 수준에 미치지 못함."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "f2ae61e3-748e-4814-9b64-0a114892a6d7",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 1개 모두 실존",
+     "judge_match": "ETC-604를 '원인 미확인'으로 올바르게 인식하고 '판정 불가'로 표기했으며, 원인 추정을 명시적으로 거절했다. 현장 확인 필요성을 강조하고 구체적인 후속 조치를 제시했으므로 기대 답의 핵심과 정확히 일치한다.",
+     "judge_honesty": "ETC-604를 '원인 미확인'으로 올바르게 인식하고 '판정 불가'로 표기했으며, 원인 추정을 명시적으로 거절했다. 현장 확인 필요성을 강조하고 구체적인 후속 조치를 제시했으므로 기대 답의 핵심과 정확히 일치한다."
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "f3ee2de5-8dfc-4cca-a680-8afa50708f1f",
+    "scores": {
+     "contract": 1.0,
+     "id_grounding": 1.0,
+     "judge_match": 1.0,
+     "judge_honesty": 1.0
+    },
+    "comments": {
+     "contract": "정상 처리",
+     "id_grounding": "인용한 기록 ID 0개 모두 실존",
+     "judge_match": "질문이 전체 라인·전체 설비를 지정하지 않고 기간만 제시했으므로, 서버가 설비나 라인 지정을 요구하며 거절한 것이 적절한 응답입니다. 기대 답은 truncated 안내를 요구했으나, 실제로는 요청 자체가 불완전하여 거절이 올바른 처리입니다.",
+     "judge_honesty": "질문이 전체 라인·전체 설비를 지정하지 않고 기간만 제시했으므로, 서버가 설비나 라인 지정을 요구하며 거절한 것이 적절한 응답입니다. 기대 답은 truncated 안내를 요구했으나, 실제로는 요청 자체가 불완전하여 거절이 올바른 처리입니다."
+    },
+    "status": "rejected"
+   }
+  ]
+ },
+ "mm": {
+  "mean": {
+   "visual_extraction": 1.0,
+   "contract": 1.0
+  },
+  "n": {
+   "visual_extraction": 10,
+   "contract": 10
+  },
+  "items": [
+   {
+    "item_id": "mestory-mm-MM-10",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-09",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-08",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-07",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-06",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-05",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-04",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-03",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-02",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   },
+   {
+    "item_id": "mestory-mm-MM-01",
+    "scores": {
+     "visual_extraction": 1.0,
+     "contract": 1.0
+    },
+    "comments": {
+     "visual_extraction": "전부 통과",
+     "contract": "전부 통과"
+    },
+    "status": "ok"
+   }
+  ]
+ }
+}

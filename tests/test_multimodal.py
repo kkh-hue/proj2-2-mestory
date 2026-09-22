@@ -361,6 +361,8 @@ def test_AC11_이미지를_보내면_그대로_전달된다(api):
     generator.assert_awaited_once()
     call_kwargs = dict(generator.call_args.kwargs)
     call_kwargs.pop("report_id")  # 요청마다 새로 만드는 UUID — 값 자체는 다른 시험에서 확인
+    # user_id는 서버가 정하는 요청 출처 라벨이라 요청 본문과 무관하다 (docs/specs/langfuse-user-id.md).
+    assert call_kwargs.pop("user_id") == "web"
     assert call_kwargs == {
         "line_id": "LINE-A", "equipment_id": "EQ-001", "date_from": None, "date_to": None,
         "session_id": None, "images": [FAKE_IMAGE], "message": None,
