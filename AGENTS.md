@@ -50,6 +50,7 @@ python -m mcp_server.server              # MCP 서버 단독 실행(에러 확�
 
 - `MESTORY_DATA_SOURCE=csv`(기본) → `MESTORY_DATA_DIR` 또는 `proj2-2/data`
 - `MESTORY_DATA_SOURCE=db` → `DATABASE_URL` 또는 `DATABASE_PUBLIC_URL`
+- `docker compose up`은 `docker-compose.yml`이 `db`로 고정한다. 이미지에 `data/`가 없어 컨테이너 안에서는 csv 모드가 동작하지 않는다. 채점자는 `.env`에 `DATABASE_URL`(제출 폼에 따로 기재)과 본인 `OPENROUTER_API_KEY`를 채운다(`README.md` "로컬 실행").
 
 ## 협업 규칙
 
@@ -99,6 +100,5 @@ python -m mcp_server.server              # MCP 서버 단독 실행(에러 확�
 
 ## 알려진 문제
 
-- **`docker compose up` 한 줄 실행이 깨져 있다.** `data/`가 저장소에 없고 `Dockerfile`이 `data/`·`scripts/`를 복사하지 않아, 컨테이너 안에서 `FileNotFoundError` → 폴백 응답(200 OK)만 나온다. **겉보기엔 동작해 보이니 주의.** (`Dockerfile` 12번 줄에 "data/ 가 생기면 COPY 한 줄 추가할 것"이라고 적혀 있다)
 - **F-07(후속 질문 맥락 유지)이 Windows에서 동작하지 않는다.** `session_id`를 넘기면 `Psycopg cannot use the 'ProactorEventLoop' to run in async mode`. MCP 서버는 서브프로세스라 Proactor 루프가, psycopg 비동기는 Selector 루프가 필요해 동시 만족이 불가능하다. Linux 배포에서도 재현되는지 확인 필요.
 - **ZDR(Zero Data Retention)을 켠 채로 쓰려면 모델을 가려 써야 한다.** 교육과정 보안 정책이라 ZDR은 끌 수 없다. OpenRouter는 `tools`가 있으면 tool calling 지원 엔드포인트로 한 번 거르고, 그다음 data policy로 또 거른다. `openai/gpt-4o-mini`는 tools를 지원하는 곳이 OpenAI 하나뿐이고 그게 ZDR에서 빠져 **404 `No endpoints found matching your data policy`**가 난다(routing_funnel: 3개 → 1개 → 실패). `openai/gpt-5-mini`는 엔드포인트 4개가 모두 tools를 지원해 ZDR로도 동작한다(Azure 경유). **모델을 바꾸기 전에 `scripts/check_zdr.py`를 먼저 돌릴 것.** 추론 모델(gpt-5 계열)은 `MESTORY_LLM_REASONING_EFFORT`도 함께 설정한다 — 안 하면 추론 토큰이 `max_tokens`를 먼저 써서 리포트 JSON이 잘린다.

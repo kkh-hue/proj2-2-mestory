@@ -563,6 +563,22 @@ h1,h2,h3,h4,p { margin-top:0; } h1 { margin:3px 0 4px; font-size:32px; letter-sp
   .equipment-summary-grid,.equipment-grid { grid-template-columns:1fr; }
   .alert-summary-row { flex-direction:column; }
   .modal-panel { padding:24px 20px; }
+
+  /* reports 상단 검색/생성 액션은 모바일에서만 한 줄로 유지한다. */
+  .topbar-actions:has(.reports-top-actions) { width:100%; min-width:0; }
+  .reports-top-actions { display:flex; align-items:center; gap:8px; width:100%; min-width:0; }
+  .reports-top-actions .search-box { flex:1 1 auto; min-width:0; padding:9px 11px; }
+  .reports-top-actions .search-box input { width:100%; min-width:0; }
+  .reports-top-actions .new-analysis-button { flex:0 0 auto; white-space:nowrap; padding:9px 11px; font-size:12px; gap:5px; }
+
+  /* 알림 카드는 모바일에서 아이콘·내용·메타 정보를 세로로 쌓아 읽기 쉽게 한다. */
+  .alert-row { align-items:stretch; flex-direction:column; gap:12px; padding:16px; }
+  .alert-icon { align-self:flex-start; }
+  .alert-top { align-items:flex-start; flex-wrap:wrap; gap:7px 9px; }
+  .alert-tag { flex:0 0 auto; white-space:nowrap; }
+  .alert-top h4 { min-width:0; overflow-wrap:anywhere; }
+  .alert-desc { overflow-wrap:anywhere; word-break:normal; }
+  .alert-right { width:100%; justify-content:flex-start; gap:10px; }
 }
 
 /* ── 리포트 상세 PDF 인쇄(window.print) — 사이드바·버튼은 지면에 필요 없다 ─── */
