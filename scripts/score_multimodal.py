@@ -365,8 +365,12 @@ def do_run(tag: str, skip_control: bool) -> dict:
         gap = summary["axes"]["visual_extraction"] - c["visual_extraction"]
         print(f"\n  [이미지 기여] 이미지 있음 {summary['axes']['visual_extraction']:.3f} "
               f"vs 없음 {c['visual_extraction']:.3f}  → 차이 {gap:+.3f}")
-        print(f"  [게이트] 텍스트 최악1건 {c['p95']:.1f}s (목표 {GATE_TEXT_SEC}s) / "
-              f"이미지 최악1건 {summary['latency']['p95']:.1f}s (목표 {GATE_IMAGE_SEC}s)")
+        # 게이트는 EVAL_REPORT에 "최악 1건 ≤ 24s / 28s"로 정해져 있다 — p95가 아니라 최댓값으로 판정한다.
+        # (옛 p95는 10건이면 최댓값이었으므로, 여기를 p95로 바꾸면 게이트가 말없이 느슨해진다)
+        text_worst = max(x["elapsed_sec"] for x in control)
+        image_worst = max(latencies, default=0.0)
+        print(f"  [게이트] 텍스트 최악1건 {text_worst:.1f}s (목표 {GATE_TEXT_SEC}s) / "
+              f"이미지 최악1건 {image_worst:.1f}s (목표 {GATE_IMAGE_SEC}s)")
     slow = sorted((r for r in summary["cases"]), key=lambda r: -r["elapsed_sec"])[:3]
     if slow:
         print("\n  [느린 케이스 3건]  지연 / 도구호출")
