@@ -60,6 +60,7 @@ from backend.services.llm import (  # noqa: E402
     resolve_model_name,
 )
 from mcp_server.tools.data_loader import load_error_codes          # noqa: E402
+from scripts.latency_stats import p95                               # noqa: E402
 
 # "E-102" 같은 에러코드 모양. 사전에 없는 것이 나오면 지어낸 것으로 본다.
 #
@@ -309,19 +310,8 @@ def do_run(tag: str, skip_control: bool) -> dict:
     def mean(xs):
         return round(statistics.mean(xs), 4) if xs else 0.0
 
-    def p95(xs):
-        """⚠️ 케이스가 10건이면 이 값은 p95가 아니라 '가장 느린 1건'이다.
-
-        int(10 * 0.95) = 9 → 정렬한 10개 중 마지막 = 최댓값이 나온다.
-        진짜 p95를 보려면 케이스를 늘려야 한다(20건이면 19번째, 30건이면 28번째).
-        JSON 키 이름은 기존 회차 파일과 맞추려고 p95로 두고, 사람이 읽는 출력에서만
-        '최악1건'이라고 부른다 — 이름을 속이면 게이트 숫자를 잘못 읽게 된다.
-        """
-        if not xs:
-            return 0.0
-        s = sorted(xs)
-        return round(s[min(len(s) - 1, int(len(s) * 0.95))], 2)
-
+    # p95는 scripts/latency_stats.py의 선형보간 p95를 쓴다.
+    # 옛 계산은 10건이면 최댓값을 돌려줘서 출력에서 '최악1건'이라고 불렀다 — 이제는 이름 그대로 p95다.
     summary = {
         "tag": tag,
         "when": datetime.now().isoformat(timespec="seconds"),
@@ -359,7 +349,7 @@ def do_run(tag: str, skip_control: bool) -> dict:
         print(f"\n  ⚠️  측정 불가 {len(summary['unmeasured'])}건: {', '.join(summary['unmeasured'])}")
         print("      인프라 오류(폴백)로 점수에서 제외했다. 모델 실패가 아니다.")
         print("      → 이 상태의 점수는 보고서에 쓰지 말고, 전건 측정 후 다시 재라.")
-    print(f"  지연 평균/최악1건   : {summary['latency']['mean']:.1f}s / {summary['latency']['p95']:.1f}s")
+    print(f"  지연 평균/p95       : {summary['latency']['mean']:.1f}s / {summary['latency']['p95']:.1f}s")
     if control:
         c = summary["control_no_image"]
         gap = summary["axes"]["visual_extraction"] - c["visual_extraction"]
