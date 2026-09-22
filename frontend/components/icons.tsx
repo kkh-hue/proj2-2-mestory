@@ -203,3 +203,7 @@ export function IconX(props: SVGProps<SVGSVGElement>) {
 export function IconCamera(props: SVGProps<SVGSVGElement>) {
   return <svg {...base(props)}><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" /><circle cx="12" cy="13" r="3.4" /></svg>;
 }
+
+export function IconExternalLink(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M9 6H6.5A1.5 1.5 0 0 0 5 7.5v10A1.5 1.5 0 0 0 6.5 19h10a1.5 1.5 0 0 0 1.5-1.5V15" /><path d="M14 4h6v6M20 4 11 13" /></svg>;
+}
