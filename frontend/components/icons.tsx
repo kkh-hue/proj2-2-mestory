@@ -199,3 +199,7 @@ export function IconFolder(props: SVGProps<SVGSVGElement>) {
 export function IconX(props: SVGProps<SVGSVGElement>) {
   return <svg {...base({ strokeWidth: 2.2, ...props })}><path d="M6 6l12 12M18 6 6 18" /></svg>;
 }
+
+export function IconCamera(props: SVGProps<SVGSVGElement>) {
+  return <svg {...base(props)}><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1-2h7l1 2h2A1.5 1.5 0 0 1 20 8.5v9A1.5 1.5 0 0 1 18.5 19h-13A1.5 1.5 0 0 1 4 17.5Z" /><circle cx="12" cy="13" r="3.4" /></svg>;
+}

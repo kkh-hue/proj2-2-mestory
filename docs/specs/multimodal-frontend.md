@@ -33,11 +33,13 @@
 - **Out of Scope**
   - `/downtime/report`(분석 실행) 화면 — 이번엔 채팅 화면만
   - 죽은 컴포넌트 `ChatInput.tsx`·`ChatWindow.tsx`·`ReportCard.tsx` — 어느 페이지도 import 하지 않는다(`ff5f966` 이후 방치). **되살리지도, 지우지도 않는다**
-  - 카메라로 직접 촬영(`capture` 속성), 드래그앤드롭, 붙여넣기 첨부
+  - 드래그앤드롭, 붙여넣기 첨부
   - 이미지 회전·자르기·압축
   - 첨부 이미지를 서버에 저장해 나중에 다시 보기 — base64를 저장하지 않는 것은 [multimodal.md](./multimodal.md) AC-10의 결정이다
   - 프론트 테스트 러너 도입 (`package.json` 건드리지 않음)
   - 모델 라우팅(이미지 있음 → gpt-4o) — 별건
+
+> **갱신 (2026-09-22)**: 카메라 직접 촬영을 추가했다. 클립 버튼 옆에 카메라 버튼을 두고, 숨긴 `<input type="file" capture="environment">`를 그 버튼이 연다. 기존 클립 버튼(파일 선택)은 그대로 두고, 카메라 버튼은 같은 `handleFilesPicked` 검증·변환 로직을 공유한다 — 새 컴포넌트나 상태를 추가하지 않았다. `capture` 속성은 데스크톱 브라우저에서는 무시되어 일반 파일 선택 창이 열리므로 회귀가 없다.
 
 ## What
 

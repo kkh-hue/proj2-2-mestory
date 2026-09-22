@@ -11,7 +11,7 @@ import CauseBreakdown from "../../../components/CauseBreakdown";
 import InsightPanel from "../../../components/InsightPanel";
 import Topbar from "../../../components/Topbar";
 import {
-  IconChevronRight, IconPaperclip, IconPlus, IconReport, IconRobot, IconSend, IconStopCircle,
+  IconCamera, IconChevronRight, IconPaperclip, IconPlus, IconReport, IconRobot, IconSend, IconStopCircle,
   IconTriangleWarning, IconUser,
 } from "../../../components/icons";
 import { ReportApiError, createReportWithId, getChatHistory, listChatSessions, listEquipment } from "../../../lib/api";
@@ -141,6 +141,9 @@ export default function AiAnalysisChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 기본 파일 선택 버튼은 디자인이 팀 스타일과 어긋나 숨겨 두고, 클립 버튼이 대신 눌러 준다.
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // 카메라 촬영 전용 입력. capture 속성은 모바일 브라우저에서만 카메라를 바로 연다 —
+  // 데스크톱에서는 일반 파일 선택 창과 똑같이 동작해서 별도 분기 없이 안전하다.
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   // 지금 화면에 보이는 세션. 응답이 늦게 도착했을 때 "그 사이 다른 대화로 옮겼는지" 판단하는 기준이다.
   const activeSessionRef = useRef("");
 
@@ -574,6 +577,24 @@ export default function AiAnalysisChatPage() {
               onClick={() => fileInputRef.current?.click()}
             >
               <IconPaperclip />
+            </button>
+            {/* 카메라 촬영. capture="environment"는 후면 카메라를 우선 연다 (전면 필요하면 "user"). */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              capture="environment"
+              hidden
+              onChange={handleFilesPicked}
+            />
+            <button
+              type="button"
+              className="ai-attach-button"
+              aria-label="카메라로 촬영"
+              disabled={loading}
+              onClick={() => cameraInputRef.current?.click()}
+            >
+              <IconCamera />
             </button>
             <input
               type="text"
