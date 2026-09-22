@@ -49,6 +49,12 @@ python scripts/run_langfuse_eval.py --tag <회차명>            # 텍스트 + �
 python scripts/run_langfuse_eval.py --tag <회차명> --only text --limit 3   # 시험 실행
 ```
 
+평가셋 자체를 점검할 때는(겹치는 케이스, 사전에는 있지만 평가셋에 없는 에러코드) 아래 오프라인 도구를 씁니다. LLM 호출도, 비용도 없습니다(문자열 유사도만 씁니다).
+
+```bash
+python scripts/find_similar_eval_cases.py
+```
+
 - 결과는 Langfuse의 Datasets → Experiments와 `runs/langfuse_<회차명>.json`에 남습니다. 자세한 채점 축·한계는 루트 [EVAL_REPORT.md](../EVAL_REPORT.md) 3장.
 - 리포트 저장은 건너뜁니다. OpenRouter 크레딧이 남은 키가 필요하고, DB 없이 돌리려면 `MESTORY_DATA_SOURCE=csv`, `MESTORY_DATA_DIR=<CSV 폴더>`를 줍니다.
 
