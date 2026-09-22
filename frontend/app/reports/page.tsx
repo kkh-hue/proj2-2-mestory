@@ -67,7 +67,7 @@ export default function ReportsPage() {
         title="리포트"
         subtitle="AI 원인분석이 생성한 리포트를 확인하세요."
         action={
-          <>
+          <div className="reports-top-actions">
             <label className="search-box">
               <IconSearch />
               <input type="text" placeholder="리포트 검색" aria-label="리포트 검색" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -76,7 +76,7 @@ export default function ReportsPage() {
               <IconPlus />
               새 리포트 생성
             </Link>
-          </>
+          </div>
         }
       />
 
