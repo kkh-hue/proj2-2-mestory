@@ -3,6 +3,7 @@ import type { DashboardSummary } from "../types/dashboard";
 import type { AlertItem } from "../types/alert";
 import type { EquipmentSummaryItem } from "../types/equipment";
 import type { DowntimeAnalysis, DowntimeAnalysisQuery } from "../types/downtimeAnalysis";
+import { getAccessToken } from "./authToken";
 
 const READ_REQUEST_TIMEOUT_MS = 10_000;
 // 메일 발송은 외부 서비스(Resend)를 거치므로 읽기보다 넉넉하게 준다.
@@ -73,7 +74,10 @@ async function postReport(
 ): Promise<{ report: DowntimeReport; reportId: string | null }> {
   const response = await fetchWithTimeout(`${getBaseUrl()}/report`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
     body: JSON.stringify(request),
     signal: options?.signal,
   }, ANALYSIS_REQUEST_TIMEOUT_MS);
@@ -102,7 +106,10 @@ export async function createReportWithId(
 }
 
 export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
-  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/${encodeURIComponent(sessionId)}`, undefined, READ_REQUEST_TIMEOUT_MS);
+  const token = getAccessToken();
+  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/${encodeURIComponent(sessionId)}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  }, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }
@@ -110,7 +117,10 @@ export async function getChatHistory(sessionId: string): Promise<ChatTurn[]> {
 }
 
 export async function listChatSessions(): Promise<ChatSessionSummary[]> {
-  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/sessions`, undefined, READ_REQUEST_TIMEOUT_MS);
+  const token = getAccessToken();
+  const response = await fetchWithTimeout(`${getBaseUrl()}/chat/sessions`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  }, READ_REQUEST_TIMEOUT_MS);
   if (!response.ok) {
     throw new ReportApiError(response.status, await parseErrorBody(response));
   }

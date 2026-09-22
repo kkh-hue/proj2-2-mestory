@@ -54,8 +54,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI):
-    await init_db()
     await init_auth_db()
+    await init_db()
     yield
 
 
@@ -262,6 +262,7 @@ async def create_report(
             # 로그인이 없어 사람을 식별할 수 없으므로, 사람이 아니라 어디서 온 요청인지를 붙인다.
             # 요청 본문에서 받지 않는다 — 클라이언트가 임의 값을 넣지 못하게. docs/specs/langfuse-user-id.md
             user_id=current_user["email"],
+            db_user_id=current_user["id"],
         )
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -292,19 +293,19 @@ async def create_report(
 #    "sessions"가 session_id로 매칭돼 버린다.
 # ─────────────────────────────────────────────
 @app.get("/chat/sessions")
-async def get_chat_sessions(limit: int = 30) -> list[dict]:
+async def get_chat_sessions(limit: int = 30, current_user: dict = Depends(get_current_user)) -> list[dict]:
     """AI 원인분석 화면 왼쪽 세션 목록용 — 세션별 첫 질문·마지막 활동 시각."""
     try:
-        return await list_chat_sessions(limit)
+        return await list_chat_sessions(limit, user_id=current_user["id"])
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.get("/chat/{session_id}")
-async def get_chat_history(session_id: str) -> list[dict]:
+async def get_chat_history(session_id: str, current_user: dict = Depends(get_current_user)) -> list[dict]:
     """AI 원인분석 대화형 화면이 새로고침/재방문 때 이전 대화를 그대로 불러오는 곳."""
     try:
-        return await list_chat_turns(session_id)
+        return await list_chat_turns(session_id, current_user["id"])
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

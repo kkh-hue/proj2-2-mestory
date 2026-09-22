@@ -103,6 +103,13 @@ async def init_db() -> None:
                 "alter table chat_messages add column if not exists display_images jsonb"
             )
             await conn.execute(
+                "alter table chat_messages add column if not exists user_id bigint references users(id)"
+            )
+            await conn.execute(
+                "create index if not exists idx_chat_messages_user_session "
+                "on chat_messages (user_id, session_id, created_at)"
+            )
+            await conn.execute(
                 "create index if not exists idx_chat_messages_session "
                 "on chat_messages (session_id, created_at)"
             )
@@ -178,6 +185,7 @@ async def save_message(
     report_id: str | None = None,
     display_content: str | None = None,
     images: list[str] | None = None,
+    user_id: int | None = None,
 ) -> None:
     """content는 LLM 대화 맥락용(원문 그대로), display_content는 화면 표시용(짧고 사람이 읽는 문장).
 
@@ -195,9 +203,9 @@ async def save_message(
         async with await _connect() as conn:
             await conn.execute(
                 "insert into chat_messages "
-                "(session_id, role, content, display_content, report_id, display_images) "
-                "values (%s, %s, %s, %s, %s, %s)",
-                (session_id, role, content, display_content, report_id,
+                "(session_id, user_id, role, content, display_content, report_id, display_images) "
+                "values (%s, %s, %s, %s, %s, %s, %s)",
+                (session_id, user_id, role, content, display_content, report_id,
                  json.dumps(thumbnails, ensure_ascii=False) if thumbnails else None),
             )
     except Exception as exc:
@@ -205,14 +213,14 @@ async def save_message(
         raise DatabaseUnavailableError("데이터베이스에 대화 메시지를 저장하지 못했습니다") from exc
 
 
-async def load_chat_history(session_id: str, limit: int = 10) -> list[BaseMessage]:
+async def load_chat_history(session_id: str, user_id: int | None = None, limit: int = 10) -> list[BaseMessage]:
     """session_id의 최근 대화를 LangChain 메시지 목록으로 되돌린다 (사람/AI 합쳐 최근 limit개)."""
     try:
         async with await _connect() as conn:
             cur = await conn.execute(
-                "select role, content from chat_messages where session_id = %s "
+                "select role, content from chat_messages where session_id = %s and user_id = %s "
                 "order by created_at desc limit %s",
-                (session_id, limit),
+                (session_id, user_id, limit),
             )
             rows = await cur.fetchall()
     except Exception as exc:
@@ -246,7 +254,7 @@ def legacy_display_text(role: str, content: str) -> str:
     return action or "원인 분석 리포트가 생성되었습니다."
 
 
-async def list_chat_turns(session_id: str) -> list[dict]:
+async def list_chat_turns(session_id: str, user_id: int | None = None) -> list[dict]:
     """화면에 그대로 뿌릴 수 있는 형태로 대화 턴을 돌려준다 (assistant 턴은 report도 같이 붙인다)."""
     try:
         async with await _connect() as conn:
@@ -258,8 +266,8 @@ async def list_chat_turns(session_id: str) -> list[dict]:
                 "       r.visual_findings, r.used_image "
                 "from chat_messages m "
                 "left join reports r on r.id = m.report_id "
-                "where m.session_id = %s order by m.created_at asc",
-                (session_id,),
+                "where m.session_id = %s and m.user_id = %s order by m.created_at asc",
+                (session_id, user_id),
             )
             rows = await cur.fetchall()
     except Exception as exc:
@@ -292,7 +300,7 @@ async def list_chat_turns(session_id: str) -> list[dict]:
     return turns
 
 
-async def list_chat_sessions(limit: int = 30) -> list[dict]:
+async def list_chat_sessions(limit: int = 30, user_id: int | None = None) -> list[dict]:
     """AI 원인분석 화면 왼쪽에 띄울 대화 세션 목록. 세션 전용 테이블이 없어서
     chat_messages를 session_id로 묶어 만든다 — 제목은 그 세션의 첫 user 메시지."""
     try:
@@ -307,23 +315,24 @@ async def list_chat_sessions(limit: int = 30) -> list[dict]:
                     (
                         select m2.display_content
                         from chat_messages m2
-                        where m2.session_id = m.session_id and m2.role = 'user'
+                        where m2.session_id = m.session_id and m2.user_id = %s and m2.role = 'user'
                         order by m2.created_at asc
                         limit 1
                     ) as title,
                     (
                         select m2.content
                         from chat_messages m2
-                        where m2.session_id = m.session_id and m2.role = 'user'
+                        where m2.session_id = m.session_id and m2.user_id = %s and m2.role = 'user'
                         order by m2.created_at asc
                         limit 1
                     ) as first_content
                 from chat_messages m
+                where m.user_id = %s
                 group by m.session_id
                 order by max(m.created_at) desc
                 limit %s
                 """,
-                (limit,),
+                (user_id, user_id, user_id, limit),
             )
             rows = await cur.fetchall()
     except Exception as exc:

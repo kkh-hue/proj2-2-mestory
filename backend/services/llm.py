@@ -896,7 +896,7 @@ async def generate_report(
         message=message,
     )
 
-    chat_history = await load_chat_history(session_id, _SESSION_HISTORY_LIMIT) if session_id else []
+    chat_history = await load_chat_history(session_id, db_user_id, _SESSION_HISTORY_LIMIT) if session_id and db_user_id is not None else []
     # Langfuse에서 트레이스를 묶는 이름과, 대화 기록을 묶는 session_id는 별개다.
     #
     # 왜 나눴나 (Windows에서 막혔다):
@@ -981,10 +981,12 @@ async def generate_report(
         await save_message(
             session_id, "user", history_text,
             display_content=user_display, images=images,
+            user_id=db_user_id,
         )
         await save_message(
             session_id, "assistant", report.model_dump_json(),
             report_id=report_id, display_content=assistant_display,
+            user_id=db_user_id,
         )
 
     return report
