@@ -9,6 +9,8 @@
      scripts/score_multimodal.py와 **같은 규칙 채점**(visual_extraction · contract)으로 돌린다.
      이미지는 base64로 Langfuse에 올리지 않는다(멀티모달 Spec AC-10). 파일명만 넣고
      실제 이미지는 이 스크립트가 로컬에서 읽어 붙인다.
+  ③ 비교: --compare 이전 이후 — 두 텍스트 회차를 축별 평균과 **문항별 회귀 목록**으로 대조한다.
+     Langfuse·LLM을 부르지 않고 evals/runs/langfuse_<회차>.json만 읽는다.
 
 측정 축 (텍스트)
   contract      : 인프라 오류·폴백 없이 처리됐는가 (규칙). 400·422로 거절한 것은 정상 처리다.
@@ -28,6 +30,7 @@
     python scripts/run_langfuse_eval.py --tag before
     python scripts/run_langfuse_eval.py --tag after --only text
     python scripts/run_langfuse_eval.py --tag smoke --limit 3
+    python scripts/run_langfuse_eval.py --compare before after      # 두 회차 대조 (비용 없음)
 
   MESTORY_DATA_SOURCE=csv, MESTORY_DATA_DIR=docs 로 돌리면 DB 없이 CSV로 조회한다.
   리포트 저장(save_report)은 하지 않는다 — 평가가 운영 DB에 리포트를 쌓으면 안 된다.
@@ -62,6 +65,9 @@ from langfuse import Evaluation, get_client  # noqa: E402
 
 import backend.services.llm as llm  # noqa: E402
 from backend.services.llm import AnalysisInfrastructureError, generate_report  # noqa: E402
+from scripts.eval_compare import (  # noqa: E402
+    TEXT_AXES, check_same_dataset, compare_runs, format_axes, format_items, text_items,
+)
 
 RUNS = REPO_ROOT / "evals" / "runs"
 TEXT_DATASET_FILE = REPO_ROOT / "evals" / "dataset.jsonl"
@@ -431,9 +437,36 @@ def run_one(lf, *, kind: str, dataset_name: str, tag: str, limit: int | None, co
     return summary
 
 
+def do_compare(before: str, after: str) -> None:
+    """두 텍스트 회차(evals/runs/langfuse_<회차>.json)를 축별 평균과 문항별 회귀로 대조한다.
+
+    Langfuse·LLM을 부르지 않는다 — 회차 파일만 읽으므로 비용이 없다.
+    평가셋 지문이 다른 두 회차는 비교하지 않는다. 평가셋이 바뀌었으면 '회귀'가 모델 탓인지 문항 탓인지 가를 수 없다.
+    """
+    runs = []
+    for tag in (before, after):
+        path = RUNS / f"langfuse_{tag}.json"
+        if not path.exists():
+            raise SystemExit(f"{path.relative_to(REPO_ROOT)} 없음 — 회차 이름을 확인하세요")
+        run = json.loads(path.read_text(encoding="utf-8"))
+        if "text" not in run:
+            raise SystemExit(f"'{tag}' 회차에는 텍스트 결과가 없습니다 (--only mm으로 잰 회차)")
+        runs.append(run)
+
+    ok, message = check_same_dataset(*runs)
+    if message:
+        print(f"⚠️  {message}\n")
+    if not ok:
+        raise SystemExit(1)
+    result = compare_runs(text_items(runs[0]), text_items(runs[1]), TEXT_AXES)
+    print("\n".join(format_axes(result, before, after) + format_items(result)))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--tag", required=True, help="회차 이름 (예: before, after)")
+    ap.add_argument("--tag", help="회차 이름 (예: before, after). --compare를 쓸 때만 빼도 된다")
+    ap.add_argument("--compare", nargs=2, metavar=("BEFORE", "AFTER"),
+                    help="두 텍스트 회차를 문항별로 대조한다 (Langfuse·LLM 호출 없음)")
     ap.add_argument("--only", choices=["text", "mm", "both"], default="both")
     ap.add_argument("--limit", type=int, help="항목 수 제한 (시험 실행용)")
     ap.add_argument("--concurrency", type=int, default=3)
@@ -442,6 +475,12 @@ def main() -> None:
                          f"옛 회차를 재현할 때만 지정 (예: {LEGACY_TEXT_DATASET})")
     ap.add_argument("--mm-dataset", default=DEFAULT_MM_DATASET)
     args = ap.parse_args()
+
+    if args.compare:
+        do_compare(*args.compare)
+        return
+    if not args.tag:
+        ap.error("--tag가 필요합니다 (--compare를 쓸 때만 빼도 됩니다)")
 
     if not (os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")):
         raise SystemExit("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY가 없습니다")
