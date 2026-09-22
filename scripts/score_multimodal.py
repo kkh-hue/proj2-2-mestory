@@ -25,7 +25,8 @@
     --no-image-control 을 주면 '이미지 없이' 대조군을 건너뛴다(비용 절반)
 
 비용 안내
-  케이스 10건 × (이미지 있음 + 없음) = 호출 20번 ≈ $0.05.
+  케이스 10건 × (이미지 있음 + 없음) = 호출 20번 ≈ $0.05 (gpt-4o-mini 시절).
+  2026-09-22에 30건으로 늘었다 — gpt-5-mini 기준 이미지만 약 12분 $0.15, 대조군까지 켜면 그 2배.
 """
 
 from __future__ import annotations
@@ -210,6 +211,13 @@ def score_case(case: dict, report, codes: set[str]) -> dict:
         "used_image": report.used_image,
         "cause_codes": cause_codes,
         "severities": severities,
+        # 2026-09-22부터 저장한다 — 그 전 회차 파일에는 없어서 rubric(판정 불가 + false)으로 다시 채점할 수 없다.
+        "confirmed": [c.is_confirmed for c in report.causes],
+        # 채점에는 쓰지 않는 진단용 칸 (2026-09-22 mm30_r2부터).
+        # 원인 목록을 비운 대신 메모에 '판정 불가'를 적었는지 같은 것을 회차 파일만으로 확인하려고 남긴다.
+        "unclassified_count": report.unclassified_count,
+        "confidence_note": report.confidence_note,
+        "recommended_action": report.recommended_action,
     }
 
 
