@@ -376,7 +376,12 @@ def summarize(result) -> dict:
     per_axis: dict[str, list[float]] = {}
     items = []
     for ir in result.item_results:
-        row = {"item_id": getattr(ir.item, "id", None), "scores": {}, "comments": {}}
+        # case_id = 평가셋의 id. 회차끼리 짝을 맞추는 키다(Langfuse 항목 id는 Dataset마다 달라 못 쓴다).
+        # 2026-09-22 전 Dataset의 항목에는 없어서 None이 된다 → 비교할 때 item_id로 대신한다.
+        metadata = getattr(ir.item, "metadata", None)
+        metadata = metadata if isinstance(metadata, dict) else {}   # Langfuse는 metadata에 아무 값이나 허용한다
+        row = {"item_id": getattr(ir.item, "id", None), "case_id": metadata.get("case_id"),
+               "scores": {}, "comments": {}}
         for ev in ir.evaluations or []:
             per_axis.setdefault(ev.name, []).append(float(ev.value))
             row["scores"][ev.name] = float(ev.value)
