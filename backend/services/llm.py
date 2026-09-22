@@ -16,6 +16,7 @@ LangGraph는 이 프로젝트에서 금지되어 있어 사용하지 않는다 (
 
 from __future__ import annotations
 
+import difflib
 import json
 import logging
 import os
@@ -798,6 +799,58 @@ async def _generate_with_retries(
     raise AnalysisInfrastructureError("분석 결과를 생성하지 못했습니다")
 
 
+# 같은 에러코드에 대해 거의 같은 문장을 두 번 적는 경우가 있다 — 도구를 여러 번 왕복하며
+# 매번 원인을 새로 적다 보면 표현만 살짝 다른 중복이 섞인다. 이건 LLM 출력을 받은 뒤의
+# 순수한 후처리다 — 검색 결과를 프롬프트에 넣는 RAG가 아니고, 임베딩도 안 쓴다(외부 API
+# 호출을 요청마다 추가하면 지연·비용이 늘 뿐, 문장 비교에는 표준 라이브러리(difflib)로 충분하다).
+#
+# ⚠️ 기준값을 낮게 잡으면 위험하다. 직접 재보니 "온도 센서 값 이상으로 설비가 정지됨"과
+# "진동 센서 값 이상으로 설비가 정지됨"(전혀 다른 원인! 센서 종류만 바뀜)의 유사도가 0.9인데,
+# 정작 같은 원인을 풀어 쓴 문장("온도 센서 값이 이상하여 설비가 정지되었음")은 0.79였다.
+# 즉 "핵심 단어 한두 글자만 다른, 진짜 다른 원인"이 "같은 말을 풀어 쓴 것"보다 오히려
+# 유사도가 더 높게 나올 수 있다 — 짧은 한국어 기술 문장은 대부분 겹치고 차이가 핵심어
+# 한두 글자에만 있기 때문이다. 그래서 기준값을 0.97(거의 완전히 같은 문장만)로 아주 보수적으로
+# 잡았다. 이 값 때문에 표현이 다른 진짜 중복을 놓칠 수 있지만(false negative), 그건 안전하다
+# — 화면에 비슷한 문장이 한 번 더 보일 뿐이다. 반대로 기준값을 낮춰 서로 다른 원인을
+# 하나로 지워버리면(false positive) 현장에 실제로 있는 문제 하나를 놓치게 된다 — 훨씬 위험하다.
+_CAUSE_DEDUP_RATIO = 0.97
+
+
+def _dedupe_causes(causes: list["DowntimeCause"]) -> list["DowntimeCause"]:
+    """같은 error_code에 문장까지 거의 같은 원인이 중복되면 먼저 나온 것만 남긴다.
+
+    error_code가 다르면 절대 합치지 않는다(서로 다른 근거를 지우는 위험을 피한다).
+    error_code가 비어 있으면(미등록·데이터 오류 등) 그룹으로 묶지 않는다 — 같은 코드가
+    없다는 것 자체가 서로 무관한 건일 수 있어서, 문장이 비슷해 보여도 지우지 않는다.
+    """
+    def normalized(text: str) -> str:
+        # 앞뒤 공백·연속 공백만 정리한다(내용 단어는 건드리지 않는다) — 순수 공백 차이로
+        # 기준값(0.97)을 살짝 못 넘겨 "진짜 같은 문장"을 중복으로 못 잡는 걸 막기 위함이다.
+        return re.sub(r"\s+", " ", text.strip())
+
+    kept: list[DowntimeCause] = []
+    kept_by_code: dict[str, list[DowntimeCause]] = {}
+    dropped = 0
+    for cause in causes:
+        code = (cause.error_code or "").strip()
+        group = kept_by_code.get(code) if code else None
+        if group is not None:
+            desc = normalized(cause.description)
+            is_dup = any(
+                difflib.SequenceMatcher(None, desc, normalized(other.description)).ratio() >= _CAUSE_DEDUP_RATIO
+                for other in group
+            )
+            if is_dup:
+                dropped += 1
+                continue
+        kept.append(cause)
+        if code:
+            kept_by_code.setdefault(code, []).append(cause)
+    if dropped:
+        logger.info("원인 목록에서 거의 같은 문장 %d건을 중복 제거했습니다 (%d → %d)", dropped, len(causes), len(kept))
+    return kept
+
+
 async def generate_report(
     *,
     line_id: str | None = None,
@@ -902,6 +955,11 @@ async def generate_report(
     if not has_images:
         # 이미지가 없으면 visual_findings는 무조건 null. LLM이 뭔가 채워 보냈어도 지운다.
         report.visual_findings = None
+
+    # 도구를 여러 번 왕복하며 같은 코드의 원인을 표현만 바꿔 두 번 적는 경우가 있다.
+    # unclassified_count는 건드리지 않는다 — 그건 "판정 불가로 센 원 건수"라 중복 제거와
+    # 별개다(집계 로직이 이미 별도로 처리한 값을 여기서 다시 손대면 숫자가 어긋난다).
+    report.causes = _dedupe_causes(report.causes)
 
     if report_id:
         await save_report(report_id, report, session_id)
