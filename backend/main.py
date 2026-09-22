@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -32,7 +32,7 @@ from .db import (
     list_reports,
 )
 from .auth_db import init_auth_db
-from .auth_routes import router as auth_router
+from .auth_routes import get_current_user, router as auth_router
 from .report_email import (
     ReportEmailError,
     is_allowed_recipient,
@@ -226,7 +226,11 @@ async def _resolve_request_scope(request: "ReportRequest") -> tuple[str | None, 
 
 @app.post("/api/agent", response_model=DowntimeReport)
 @app.post("/report", response_model=DowntimeReport)
-async def create_report(request: ReportRequest, response: Response) -> DowntimeReport:
+async def create_report(
+    request: ReportRequest,
+    response: Response,
+    current_user: dict = Depends(get_current_user),
+) -> DowntimeReport:
     """정지 로그를 조건에 맞게 조회해 원인 분석 리포트를 생성한다 (PRD F-04)."""
     request_id = str(uuid.uuid4())
     report_id = str(uuid.uuid4())
@@ -257,7 +261,7 @@ async def create_report(request: ReportRequest, response: Response) -> DowntimeR
             # Langfuse Users 탭에서 평가(eval-runner)와 실제 사용을 가르는 "요청 출처" 라벨.
             # 로그인이 없어 사람을 식별할 수 없으므로, 사람이 아니라 어디서 온 요청인지를 붙인다.
             # 요청 본문에서 받지 않는다 — 클라이언트가 임의 값을 넣지 못하게. docs/specs/langfuse-user-id.md
-            user_id="web",
+            user_id=current_user["email"],
         )
     except DatabaseUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
