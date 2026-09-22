@@ -1,12 +1,16 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getMe, login, signup, type AuthUser } from "../../lib/authApi";
 import { saveAccessToken } from "../../lib/authToken";
+import { useAuth } from "../../components/AuthProvider";
 
 const fieldStyle = { width: "100%", boxSizing: "border-box" as const, border: "1px solid #d9d6ee", borderRadius: 10, padding: "12px 13px", fontSize: 14 };
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { refreshUser } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,8 +29,10 @@ export default function LoginPage() {
       const auth = mode === "login" ? await login(email, password) : await signup(email, password);
       saveAccessToken(auth.access_token);
       const currentUser = await getMe(auth.access_token);
+      await refreshUser();
       setUser(currentUser);
       setMessage(mode === "login" ? "로그인되었습니다." : "회원가입 및 로그인이 완료되었습니다.");
+      router.push("/");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "인증 요청에 실패했습니다.");
     } finally {
@@ -61,7 +67,7 @@ export default function LoginPage() {
         {error && <p role="alert" style={{ margin: "16px 0 0", color: "#c04b4b", fontSize: 13, whiteSpace: "pre-line" }}>{error}</p>}
 
         <button type="button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); setMessage(""); }} style={{ width: "100%", marginTop: 18, border: 0, background: "transparent", color: "#7565d5", fontSize: 13, cursor: "pointer" }}>
-          {mode === "login" ? "처음이신가요? 회원가입" : "이미 계정이 있나요? 로그인"}
+          {mode === "login" ? "계정이 없으신가요? 회원가입" : "이미 계정이 있으신가요? 로그인"}
         </button>
       </section>
     </main>
