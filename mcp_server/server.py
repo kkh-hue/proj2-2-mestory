@@ -9,12 +9,15 @@ MCP 서버 — 필수 조건 5.
     이 서버를 자식 프로세스로 띄우고, stdio(표준 입출력) 통로로 대화한다.
   - 그래서 이 파일은 stdio 방식(mcp.run() 기본값)으로 실행한다.
   - 주의: stdio 방식에서는 print()로 화면에 글을 찍으면 대화 통로가 깨진다.
-          여기와 tools/ 안에서는 print()를 쓰지 않는다.
+           여기와 tools/ 안에서는 print()를 쓰지 않는다.
 
-도구 3개
+도구 6개
   1. get_downtime_logs        : 정지 로그 조회 + 사실 요약 + 주의 딱지   (tools/downtime.py)
   2. get_error_code_info      : 에러코드 사전 조회                        (tools/error_codes.py)
   3. get_maintenance_history  : 설비의 최근 정비 이력 조회                (tools/maintenance.py)
+  4. search_operator_notes    : 작업자 메모 유사 문장 검색 (보조)         (tools/semantic.py)
+  5. search_maintenance_actions: 과거 조치 내용 유사 검색 (보조)          (tools/semantic.py)
+  6. search_error_descriptions : 에러코드 설명문 유사 검색 (보조)         (tools/semantic.py)
 
 설계 원칙
   - 실제 조회 로직은 tools/ 에만 둔다. 여기서는 "이름표(설명문)"와 "에러 처리"만 한다.
@@ -22,6 +25,8 @@ MCP 서버 — 필수 조건 5.
     → 설명문에 "언제 쓰는지 / 무엇을 넣는지 / 결과를 어떻게 다뤄야 하는지"를 적는다.
   - 입력이 잘못돼도 서버가 멈추지 않게, 에러를 {"error": "..."} 모양으로 돌려준다.
     → AI가 메시지를 읽고 입력을 고쳐서 다시 부를 수 있다.
+  - 시맨틱 도구(4~6)는 보조다. ID·코드·설비의 동일성은 창구 1~3(exact)이 정하고,
+    시맨틱 결과로 원인을 단정하지 않는다.
 """
 
 # `python -m mcp_server.server` 로 실행되므로, 저장소 맨 위 폴더 기준으로 불러온다
@@ -30,6 +35,11 @@ from mcp.server.fastmcp import FastMCP
 from mcp_server.tools.downtime import query_downtime_logs
 from mcp_server.tools.error_codes import lookup_error_codes
 from mcp_server.tools.maintenance import query_maintenance_history
+from mcp_server.tools.semantic import (
+    search_error_descriptions,
+    search_maintenance_actions,
+    search_operator_notes,
+)
 
 # 서버 이름: MCP 클라이언트(백엔드, Claude Desktop 등) 화면에 보이는 이름
 mcp = FastMCP("mestory-downtime")
@@ -145,6 +155,103 @@ def get_maintenance_history(
     except ValueError as e:
         return _error(str(e))
     except (RuntimeError, FileNotFoundError) as e:   # 데이터·설정 문제 (CSV 없음, 스위치 오류)
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
+
+
+# ─────────────────────────────────────────────
+# 도구 4~6. 유사 문장 검색 (보조 — exact 조회를 대체하지 않는다)
+# ─────────────────────────────────────────────
+@mcp.tool()
+def search_similar_notes(
+    query: str,
+    top_k: int = 5,
+    threshold: float = 0.12,
+    equipment_id: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict:
+    """작업자 메모(operator_note)에서 질의와 비슷한 정지 기록을 찾는다 (보조).
+    exact 조회(get_downtime_logs)가 0건이거나 표현이 달라 놓친 기록이 있을 때만 호출한다.
+
+    Args:
+        query: 찾고 싶은 증상·상황 문장. 예: "베어링 소음"
+        top_k: 돌려받을 후보 수 (기본 5, 최대 20)
+        threshold: 최소 유사도 0.0~1.0 (기본 0.12)
+        equipment_id: 특정 설비로 좁힐 때. 예: EQ-001
+        date_from: 조회 시작일 YYYY-MM-DD
+        date_to: 조회 종료일 YYYY-MM-DD
+
+    결과 읽는 법:
+        - results[].score 와 log_id·원문을 함께 인용한다. 점수 없는 인용은 금지.
+        - needs_review 가 true 면 단정하지 말고 '참고 후보'로만 보고하고 사람 확인을 요청한다.
+        - 메모 유사도로 에러코드·원인을 확정하지 않는다. 코드는 get_error_code_info(exact)로 확인한다.
+    """
+    try:
+        return search_operator_notes(
+            query, top_k=top_k, threshold=threshold,
+            equipment_id=equipment_id, date_from=date_from, date_to=date_to,
+        )
+    except ValueError as e:
+        return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
+
+
+@mcp.tool()
+def search_similar_maintenance(
+    query: str,
+    top_k: int = 5,
+    threshold: float = 0.12,
+    equipment_id: str | None = None,
+) -> dict:
+    """과거 정비 조치(action_taken·result)에서 질의와 비슷한 조치를 찾는다 (보조).
+    "같은 증상을 과거에 어떻게 고쳤나"가 궁금할 때 호출한다.
+
+    Args:
+        query: 찾고 싶은 조치·증상 문장. 예: "벨트 장력 조정"
+        top_k: 돌려받을 후보 수 (기본 5, 최대 20)
+        threshold: 최소 유사도 0.0~1.0 (기본 0.12)
+        equipment_id: 특정 설비로 좁힐 때. 예: EQ-001
+
+    결과 읽는 법:
+        - maintenance_id·score·원문을 함께 인용한다.
+        - needs_review 가 true 면 단정하지 않는다.
+        - 과거 조치는 참고일 뿐, 이번 원인의 근거로 직접 쓰지 않는다.
+    """
+    try:
+        return search_maintenance_actions(
+            query, top_k=top_k, threshold=threshold, equipment_id=equipment_id,
+        )
+    except ValueError as e:
+        return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:
+        return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
+
+
+@mcp.tool()
+def search_similar_error_codes(
+    query: str,
+    top_k: int = 5,
+    threshold: float = 0.12,
+) -> dict:
+    """에러코드 사전의 설명문에서 질의와 비슷한 항목을 찾는다 (보조, 가설 세우기용).
+    증상으로 어떤 코드를 의심할지 가설을 세울 때만 호출한다.
+
+    Args:
+        query: 증상 문장. 예: "모터에 전류가 많이 흐름"
+        top_k: 돌려받을 후보 수 (기본 5, 최대 20)
+        threshold: 최소 유사도 0.0~1.0 (기본 0.12)
+
+    결과 읽는 법:
+        - 결과는 "비슷한 설명 후보"일 뿐 코드 판정이 아니다.
+        - 최종 원인에는 get_error_code_info(exact)로 확인된 코드만 올린다.
+        - 사전에 없는 증상이면 found 후보가 없어도 코드를 지어내지 말고 '판정 불가'로 보고한다.
+    """
+    try:
+        return search_error_descriptions(query, top_k=top_k, threshold=threshold)
+    except ValueError as e:
+        return _error(str(e))
+    except (RuntimeError, FileNotFoundError) as e:
         return _error(str(e), hint="데이터 설정 문제입니다. 입력값을 바꿔도 해결되지 않습니다.")
 
 
