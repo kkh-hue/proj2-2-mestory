@@ -93,3 +93,28 @@ def test_ec09_세션_범위가_있으면_종류_이름은_무시하고_세션을
 def test_ec08_종류_이름이_없으면_추론하지_않는다():
     with pytest.raises(ScopeError, match="설비"):
         resolve_scope("원인 분석해줘", None, None, LINES2, None, TYPES)
+
+
+# ── 설비 종류 별칭(줄임말) 인식 — RAG 아님, 사전에 없는 표현은 추측하지 않는다 ──
+
+TYPES3 = {"EQ-001": "사출성형기", "EQ-002": "사출성형기", "EQ-010": "CNC가공기"}
+LINES3 = {"EQ-001": "LINE-A", "EQ-002": "LINE-B", "EQ-010": "LINE-A"}
+
+
+def test_alias_정식_이름_없이_줄임말만_있어도_인식():
+    assert resolve_scope("A라인 사출기 원인은?", None, None, LINES3, None, TYPES3) == ("LINE-A", "EQ-001")
+
+
+def test_alias_정식_이름이_있으면_별칭은_보지_않는다():
+    # "사출성형기"가 문장에 그대로 있으면 정식 이름 매칭이 우선하고, 별칭 단계로 내려가지 않는다.
+    assert resolve_scope("A라인 사출성형기 원인은?", None, None, LINES3, None, TYPES3) == ("LINE-A", "EQ-001")
+
+
+def test_alias_사전에_없는_표현은_추측하지_않는다():
+    # "인젝션기"는 _TYPE_ALIASES에 없는 표현이라 종류를 못 찾고, 범위가 전혀 없어 422가 난다.
+    with pytest.raises(ScopeError, match="설비"):
+        resolve_scope("인젝션기 원인은?", None, None, LINES3, None, TYPES3)
+
+
+def test_alias_영문_줄임말도_인식():
+    assert resolve_scope("CNC 원인 분석해줘", None, None, LINES3, None, TYPES3) == ("LINE-A", "EQ-010")

@@ -13,6 +13,22 @@ _LINE_KOREAN_RE = re.compile(r"(?<![A-Za-z])([A-Za-z])\s?라인")
 
 NEED_SCOPE_MESSAGE = "분석할 설비(예: EQ-057)나 라인(예: A라인)을 질문에 함께 적어 주세요."
 
+# 설비 종류의 흔한 다른 표현(줄임말 등). "사출기"라고만 쓰는 사용자가 실제로 있는데,
+# 마스터의 정식 이름("사출성형기")과 문자열이 정확히 겹치지 않으면 지금까지는 종류를 못 찾았다.
+#
+# ⚠️ 이건 RAG가 아니다 — LLM 프롬프트에 아무것도 넣지 않는다. resolve_scope()는 순수 함수로
+# "어느 설비를 조회할지"만 정하고, 그 결과(EQ-057 등)만 아래 단계로 넘어간다. 임베딩 검색도
+# 아니다 — 사전에 없는 표현은 추측하지 않고 그냥 "종류 없음"으로 둔다(모르는 걸 짐작해서
+# 엉뚱한 설비를 조회하면 안 된다는 팀 규칙, AGENTS.md "조회 도구는 사실만 반환한다"와 같은 이유).
+_TYPE_ALIASES: dict[str, tuple[str, ...]] = {
+    "사출성형기": ("사출기", "사출 성형기", "사출성형"),
+    "CNC가공기": ("CNC", "씨엔씨", "CNC 가공기", "CNC머신"),
+    "비전검사기": ("비전", "비전 검사기", "비전카메라", "카메라검사기"),
+    "컨베이어": ("콘베어", "컨베이어벨트", "컨베이어 벨트"),
+    "포장기": ("포장기계", "패키징기", "패키징 기계"),
+    "로봇암": ("로봇팔", "로봇 암"),
+}
+
 
 class ScopeError(ValueError):
     """범위를 확정할 수 없다. 메시지는 사용자에게 그대로 보여 줘도 되는 한국어 안내."""
@@ -33,14 +49,33 @@ def _equipment_from_text(text: str) -> str | None:
     return f"EQ-{int(match.group(1)):03d}" if match else None
 
 
+def _mentioned_types(text: str, known_types: set[str]) -> list[str]:
+    """질문 문장에서 언급된 설비 종류(정식 이름)를 찾는다.
+
+    1순위: 정식 이름이 그대로 들어 있으면 그것(기존 동작 그대로 — 가장 확실하다).
+    2순위: 정식 이름이 하나도 안 걸리면, 그때만 흔한 다른 표현(_TYPE_ALIASES)을 본다.
+           정식 이름이 이미 걸렸는데 별칭까지 더 찾으면, 서로 다른 종류가 섞여
+           "여러 종류가 동시에 언급됨"처럼 보이는 오탐이 생길 수 있어 순서를 나눴다.
+    """
+    exact = {t for t in known_types if t in text}
+    if exact:
+        return sorted(exact, key=len, reverse=True)
+    aliased = {
+        canonical
+        for canonical, aliases in _TYPE_ALIASES.items()
+        if canonical in known_types and any(alias in text for alias in aliases)
+    }
+    return sorted(aliased, key=len, reverse=True)
+
+
 def _equipment_by_type(
     text: str,
     line_hint: str | None,
     equipment_lines: dict[str, str] | None,
     equipment_types: dict[str, str],
 ) -> str | None:
-    """질문 속 설비 종류 이름("컨베이어")으로 설비를 찾는다. 1대면 그 설비, 여러 대면 후보를 알려 준다."""
-    mentioned = sorted({t for t in equipment_types.values() if t and t in text}, key=len, reverse=True)
+    """질문 속 설비 종류 이름("컨베이어", "사출기")으로 설비를 찾는다. 1대면 그 설비, 여러 대면 후보를 알려 준다."""
+    mentioned = _mentioned_types(text, {t for t in equipment_types.values() if t})
     if not mentioned:
         return None
     kind = mentioned[0]
