@@ -91,9 +91,11 @@ def build() -> list[dict]:
             "visual_must_include": [v["equipment_id"], v["error_code"]],
             "visual_must_not_include": [],
             "severity_must_include": "판정 불가",
+            # 2026-09-22 rubric 결정: 판정 불가는 is_confirmed=false까지 맞아야 정답 (SKILL.md 25줄)
+            "undeterminable_must_be_unconfirmed": True,
             "equipment_id_equals": v["equipment_id"],
         },
-        "visual_findings에 X-999가 담기고, causes의 severity에 '판정 불가'가 있어야 한다.",
+        "visual_findings에 X-999가 담기고, causes의 severity에 '판정 불가'(is_confirmed=false)가 있어야 한다.",
     )
 
     # ── 경계 2 : 계획 정지 → 원인 목록에서 빠진다 ──
@@ -134,9 +136,10 @@ def build() -> list[dict]:
             # 화면의 코드 칸이 비어 있으므로, 사전에 있는 코드를 말해도 지어낸 것이다.
             "visual_no_code_at_all": True,
             "severity_must_include": "판정 불가",
+            "undeterminable_must_be_unconfirmed": True,     # 2026-09-22 rubric 결정
             "equipment_id_equals": v["equipment_id"],
         },
-        "코드를 지어내지 않는다. severity에 '판정 불가'.",
+        "코드를 지어내지 않는다. severity에 '판정 불가'(is_confirmed=false).",
     )
 
     # ── 실패 유도 1 : 반사광으로 코드만 가림 → 가린 값을 말하면 실패 ──
