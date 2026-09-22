@@ -150,6 +150,12 @@ def score_case(case: dict, report, codes: set[str]) -> dict:
         c_checks.append((token not in cause_codes,
                          f"'{token}'는 원인 목록에 없어야 함 (계획 정지)"))
 
+    if ch.get("undeterminable_must_be_unconfirmed"):
+        # 2026-09-22 rubric 결정: '판정 불가'는 is_confirmed=false까지 맞아야 정답 (SKILL.md 25줄).
+        # '판정할 수 없다'면서 '확정'이라고 하면 현장에서 확정 판단으로 오해된다.
+        bad = [c.error_code or "(빈 코드)" for c in report.causes if c.severity == "판정 불가" and c.is_confirmed]
+        c_checks.append((not bad, f"'판정 불가' 원인은 is_confirmed=false여야 함 (위반: {bad or '없음'})"))
+
     mentions = ch.get("note_must_mention_any")
     if mentions:
         blob = (report.confidence_note or "") + " " + visual
